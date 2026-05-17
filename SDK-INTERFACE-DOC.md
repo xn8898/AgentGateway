@@ -264,7 +264,7 @@ export async function stopOpenCodeServer(): Promise<void> {
 - [ ] 管理后端特有的会话 ID（存入 `input.session.metadata`）
 - [ ] 处理多轮对话（resume / 新建）
 - [ ] 返回用量统计（`usage` 字段）
-- [ ] 处理 `startFresh`（清除旧会话）
+- [ ] 处理 `startFresh`：读取后**立即清零**，若为 true 则删除旧后端会话、创建新会话（不 resume）
 - [ ] 实现 `healthCheck?()`（可选）
 - [ ] 实现 `cancel?()`（可选）
 - [ ] **如果后端是独立服务进程：** 导出 `start()` / `stop()` 模块级函数（参见 [3.5 适配器生命周期](#35-适配器生命周期--后端服务管理)）
@@ -812,7 +812,13 @@ export class TelegramAdapter implements IMAdapter {
 - 后端会话 ID 必须存储在 `session.metadata` 中
 - 不要自己管理统计（`stats`），Runtime 会通过 `usage` 字段自动累加
 - 超时/失败时**直接抛出异常**或设置 `output.error`，不要自己处理重试
-- `startFresh` 表示用户要求清空会话，Adapter 应清除旧的后端会话 ID
+- `startFresh` 表示用户要求清空会话，Adapter 应在 `handleMessage` 开头**读取后立即清零**：
+  ```typescript
+  const shouldClear = session.startFresh;
+  session.startFresh = false;  // 必须清零，否则后续每条消息都 fresh
+  // if (shouldClear) 删除旧后端会话、创建新会话
+  ```
+  常见错误：只读不清零（导致之后的消息都被当作 fresh），或完全不读（`/clear` 命令失效）
 - **如果后端是独立服务进程**（类似 `opencode serve`），导出 `start()` / `stop()` 模块级函数，Gateway 会在 `main()` 和 `gracefulReload()` 中按需调用（参见 3.5 节）
 
 **IMAdapter 注意事项（未来）：**
