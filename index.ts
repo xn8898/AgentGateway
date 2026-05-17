@@ -256,7 +256,7 @@ class Bot {
   modelPresets: Record<string, string>;
   soul: string;
   client: Lark.Client;
-  feishuIM: FeishuIMModule;
+  im: IMModule;
   config: any;
 
   // SDK
@@ -293,13 +293,13 @@ class Bot {
       appSecret: this.appSecret,
       loggerLevel: Lark.LoggerLevel.info,
     });
-    this.feishuIM = new FeishuIMModule({ appId: this.appId, appSecret: this.appSecret });
+    this.im = new FeishuIMModule({ appId: this.appId, appSecret: this.appSecret });
 
     // ===== SDK 集成 =====
     this.sessionManager = new CustomSessionManager(this.name, this.sessions);
 
     const adapterCtx = {
-      imModule: this.feishuIM,
+      imModule: this.im,
       botName: this.name,
       modelAliases: this.modelAliases,
     };
@@ -650,7 +650,7 @@ class Bot {
       if (session.recentMessages.length > 5) session.recentMessages = session.recentMessages.slice(-5);
 
       // 构建系统提示词
-      const systemPrompt = this.soul ? buildSystemPromptWithSoul(this.soul, this.name, this.feishuIM) : undefined;
+      const systemPrompt = this.soul ? buildSystemPromptWithSoul(this.soul, this.name, this.im) : undefined;
 
       // SDK Runtime 处理
       await this.runtime.processMessage({
@@ -661,7 +661,7 @@ class Bot {
         reply: async (t: string) => this.reply(chatId, t),
         sendProgress: async (t: string) => this.sendProgress(chatId, t),
         sendBlocks: async (blocks) => this.sendFormattedReplyDirect(chatId, blocks),
-        imCaps: this.feishuIM.getCapabilities(),
+        imCaps: this.im.getCapabilities(),
       }, this.adapter, this.name);
 
     } catch (e: any) {
@@ -674,17 +674,17 @@ class Bot {
 
   async reply(chatId: string, text: string) {
     const maxLen = this.config.system?.maxReplyLength || 140000;
-    await this.feishuIM.reply(chatId, text, maxLen);
+    await this.im.reply(chatId, text, maxLen);
     console.log(`[${this.name}] 回复 chat=${chatId.slice(-8)} len=${Math.min(text.length, maxLen)}`);
   }
 
   async sendProgress(chatId: string, text: string) {
-    await this.feishuIM.sendProgress(chatId, text);
+    await this.im.sendProgress(chatId, text);
   }
 
   async sendFormattedReplyDirect(chatId: string, blocks: any[]) {
-    if (this.feishuIM?.sendBlocks) {
-      await this.feishuIM.sendBlocks(chatId, blocks);
+    if (this.im?.sendBlocks) {
+      await this.im.sendBlocks(chatId, blocks);
     }
   }
 }
@@ -748,7 +748,7 @@ async function gracefulReload(reason: string) {
   await stopAnthropicProxy();
   await stopCodexProxy();
   await stopOpenCodeServer();
-  for (const bot of _allBots) bot.feishuIM.stop();
+  for (const bot of _allBots) bot.im.stop();
   await new Promise(r => setTimeout(r, 1000));
 
   const child = Bun.spawn([process.execPath, 'run', __filename], {
@@ -885,9 +885,9 @@ async function main() {
   console.log(`   Bots:`);
 
   for (const bot of bots) {
-    bot.feishuIM.start(async (chatId, text, userId) => {
+    bot.im.start(async (chatId, text, userId) => {
       console.log(`[${bot.name}] 收到 chat=${chatId.slice(-8)} "${text.slice(0, 80)}"`);
-      setCurrentBot({ botName: bot.name, caps: bot.feishuIM.getCapabilities(), modelAliases: bot.modelAliases });
+      setCurrentBot({ botName: bot.name, caps: bot.im.getCapabilities(), modelAliases: bot.modelAliases });
       bot.handleMessage(chatId, text, userId).catch((e: Error) =>
         console.error(`[${bot.name}] handleMessage unhandled:`, e.message)
       );
@@ -952,7 +952,7 @@ async function main() {
   // 优雅关闭
   async function gracefulShutdown(signal: string) {
     console.log(`[Shutdown] 收到 ${signal}，优雅关闭中...`);
-    for (const bot of bots) bot.feishuIM.stop();
+    for (const bot of bots) bot.im.stop();
     console.log('[Shutdown] 持久化所有 session...');
     for (const bot of bots) {
       for (const [chatId, session] of bot.sessions.entries()) {

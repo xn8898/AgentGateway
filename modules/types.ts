@@ -41,7 +41,7 @@ export interface AgentContext {
   readonly activeModel: string;
   readonly modelAliases: Record<string, string>;
   readonly defaultCwd: string;
-  /** IM 模块实例（类型安全替代 (ctx as any).feishuIM） */
+  /** IM 模块实例 */
   readonly imModule?: IMModule;
 
   // 发送回复给 IM
@@ -139,4 +139,6 @@ export interface BotConfig {
   appId: string;
   appSecret: string;
   cwd?: string;
+  /** IM 平台类型（默认 feishu） */
+  im?: 'feishu' | 'telegram' | 'slack' | 'discord' | 'wechat';
 }
