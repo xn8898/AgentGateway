@@ -30,6 +30,7 @@ import {
 import { parseToBlocks } from './modules/capabilities';
 import { resolveCapabilities } from './modules/prompt-builder';
 import { FeishuIMModule } from './modules/im/feishu';
+import { TelegramAdapter } from './modules/im/telegram';
 import type { IMModule } from './modules/types';
 import { startAnthropicProxy, stopAnthropicProxy } from './modules/proxy/anthropic-proxy';
 import { startCodexProxy, stopCodexProxy, getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/proxy/codex-proxy';
@@ -287,13 +288,28 @@ class Bot {
     this._initSoul();
     this.soul = this._loadSoul();
 
-    // Feishu 客户端
-    this.client = new Lark.Client({
-      appId: this.appId,
-      appSecret: this.appSecret,
-      loggerLevel: Lark.LoggerLevel.info,
-    });
-    this.im = new FeishuIMModule({ appId: this.appId, appSecret: this.appSecret });
+    // IM 适配器工厂
+    const imType = cfg.im || 'feishu';
+
+    // Lark.Client 仅飞书需要
+    if (imType === 'feishu') {
+      this.client = new Lark.Client({
+        appId: this.appId,
+        appSecret: this.appSecret,
+        loggerLevel: Lark.LoggerLevel.info,
+      });
+    }
+
+    switch (imType) {
+      case 'feishu':
+        this.im = new FeishuIMModule({ appId: this.appId, appSecret: this.appSecret });
+        break;
+      case 'telegram':
+        this.im = new TelegramAdapter({ token: this.appId });
+        break;
+      default:
+        throw new Error(`不支持的 IM 类型: ${imType}`);
+    }
 
     // ===== SDK 集成 =====
     this.sessionManager = new CustomSessionManager(this.name, this.sessions);
