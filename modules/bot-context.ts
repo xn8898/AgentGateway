@@ -1,0 +1,26 @@
+// Bot 上下文 — 网关与代理之间的动态上下文传递
+// 同一进程内共享，网关在 spawn CLI 前设置当前 bot，代理在处理请求时读取
+
+import type { IMCapabilities } from './types';
+import type { ModelAliases } from './proxy/anthropic-proxy';
+
+export type { ModelAliases };
+
+export interface BotContextData {
+  botName: string;
+  caps: IMCapabilities | null;
+  /** Bot 级别的模型别名（/model 命令修改后传入，优先级高于全局 config.json） */
+  modelAliases?: ModelAliases;
+}
+
+let _currentBot: BotContextData | null = null;
+
+/** 网关调用：在 handleMessage 前设置当前 bot */
+export function setCurrentBot(ctx: BotContextData | null) {
+  _currentBot = ctx;
+}
+
+/** 代理调用：读取当前 bot 上下文 */
+export function getCurrentBot(): BotContextData | null {
+  return _currentBot;
+}

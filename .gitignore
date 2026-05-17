@@ -1,0 +1,15 @@
+node_modules/
+*.log
+logs/
+sessions/
+*.backup
+*.backup2
+*.bak
+*.bak.*
+*.broken
+*.restored
+*.safe
+*.lock
+.DS_Store
+*.csv
+*.txt

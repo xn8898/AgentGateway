@@ -1,0 +1,254 @@
+// ================================================================
+// SessionManager — 会话生命周期管理
+// ================================================================
+// 从 index.ts 和 anthropic-proxy.ts 迁移 session 逻辑
+// 路径: ~/Desktop/cc-gateway/sessions/{botName}/{chatId}.memory.json
+// ================================================================
+
+const fs = require('fs');
+const path = require('path');
+
+import type { Session, SessionManager, CallStats } from './types';
+
+const HOME = process.env.HOME || '/Users/keyi';
+const SESSIONS_BASE = path.join(HOME, 'Desktop', 'cc-gateway', 'sessions');
+
+/** 默认统计值 */
+const EMPTY_STATS: CallStats = {
+  calls: 0,
+  totalTurns: 0,
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalCostUSD: 0,
+  totalDurationMs: 0,
+};
+
+// ================================================================
+// 旧格式兼容
+// ================================================================
+
+/** 旧版 SessionData 格式（modules/types.ts 中的定义） */
+interface LegacySessionData {
+  chatId?: string;
+  userId: string;
+  sdkSessionId?: string;
+  codexThreadId?: string;
+  ocSessionId?: string;
+  cwd?: string;
+  permissionMode?: string;
+  codexMode?: string;
+  startFresh?: boolean;
+  stats: CallStats;
+  recentMessages: string[];
+  lastUsed: number;
+  activeModel?: string;
+  modelAliases?: Record<string, string>;
+}
+
+/**
+ * 从旧版 .memory.json 迁移为新版 Session 格式
+ * 保持向后兼容，不影响现有会话文件
+ */
+function migrateFromLegacy(data: LegacySessionData, chatId: string): Session {
+  const metadata: Record<string, any> = {};
+
+  // 迁移旧版特有 ID 到 metadata
+  if (data.sdkSessionId) metadata.sdkSessionId = data.sdkSessionId;
+  if (data.codexThreadId) metadata.codexThreadId = data.codexThreadId;
+  if (data.ocSessionId) metadata.ocSessionId = data.ocSessionId;
+
+  // 通用 backendSessionId 优先使用旧版中的值
+  const backendSessionId = data.sdkSessionId || data.codexThreadId || data.ocSessionId;
+
+  return {
+    chatId: data.chatId || chatId,
+    userId: data.userId,
+    cwd: data.cwd,
+    startFresh: data.startFresh || false,
+    backendSessionId,
+    metadata,
+    stats: data.stats || { ...EMPTY_STATS },
+    lastUsed: data.lastUsed || Date.now(),
+    running: false,
+    permissionMode: data.permissionMode,
+    codexMode: data.codexMode,
+    recentMessages: data.recentMessages || [],
+  };
+}
+
+// ================================================================
+// FileSessionManager
+// ================================================================
+
+export class FileSessionManager implements SessionManager {
+  /** 内存缓存: botName -> chatId -> Session */
+  private cache = new Map<string, Map<string, Session>>();
+
+  /** 获取 Session 文件路径 */
+  private sessionPath(botName: string, chatId: string): string {
+    const botDir = path.join(SESSIONS_BASE, botName);
+    return path.join(botDir, `${chatId}.memory.json`);
+  }
+
+  /** 确保目录存在 */
+  private ensureDir(botName: string): void {
+    const botDir = path.join(SESSIONS_BASE, botName);
+    if (!fs.existsSync(botDir)) {
+      fs.mkdirSync(botDir, { recursive: true });
+    }
+  }
+
+  async getOrCreate(botName: string, chatId: string, userId: string): Promise<Session> {
+    // 先查缓存
+    const botCache = this.cache.get(botName);
+    if (botCache) {
+      const cached = botCache.get(chatId);
+      if (cached) {
+        cached.lastUsed = Date.now();
+        return cached;
+      }
+    }
+
+    // 从文件加载
+    const filePath = this.sessionPath(botName, chatId);
+    this.ensureDir(botName);
+
+    let session: Session;
+
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const data = JSON.parse(raw);
+
+        // 检测是否为旧格式（有 sdkSessionId/codexThreadId/ocSessionId 顶层字段）
+        if ('sdkSessionId' in data || 'codexThreadId' in data || 'ocSessionId' in data) {
+          session = migrateFromLegacy(data as LegacySessionData, chatId);
+        } else if ('metadata' in data && 'stats' in data && 'chatId' in data) {
+          // 新格式
+          session = {
+            ...data,
+            startFresh: data.startFresh || false,
+            running: data.running || false,
+            recentMessages: data.recentMessages || [],
+            stats: data.stats || { ...EMPTY_STATS },
+          };
+        } else {
+          // 未知格式，新建
+          session = this.createNewSession(chatId, userId);
+        }
+      } catch (e: any) {
+        console.error(`[Session] 加载 ${chatId} 失败: ${e.message}，创建新会话`);
+        session = this.createNewSession(chatId, userId);
+      }
+    } else {
+      session = this.createNewSession(chatId, userId);
+    }
+
+    // 缓存
+    if (!this.cache.has(botName)) {
+      this.cache.set(botName, new Map());
+    }
+    this.cache.get(botName)!.set(chatId, session);
+
+    return session;
+  }
+
+  private createNewSession(chatId: string, userId: string): Session {
+    return {
+      chatId,
+      userId,
+      cwd: undefined,
+      startFresh: false,
+      backendSessionId: undefined,
+      metadata: {},
+      stats: { ...EMPTY_STATS },
+      lastUsed: Date.now(),
+      running: false,
+      recentMessages: [],
+    };
+  }
+
+  persist(botName: string, session: Session): void {
+    this.ensureDir(botName);
+
+    // 写入时保持旧格式兼容：将 metadata 中的旧 ID 也写入顶层
+    const output: Record<string, any> = {
+      chatId: session.chatId,
+      userId: session.userId,
+      cwd: session.cwd,
+      startFresh: session.startFresh,
+      stats: session.stats,
+      lastUsed: session.lastUsed,
+      recentMessages: session.recentMessages || [],
+      running: session.running,
+    };
+
+    // 通用 backendSessionId
+    if (session.backendSessionId) {
+      output.backendSessionId = session.backendSessionId;
+    }
+
+    // 向后兼容：将 metadata 中的旧 ID 也写入顶层
+    if (session.metadata) {
+      if (session.metadata.sdkSessionId) output.sdkSessionId = session.metadata.sdkSessionId;
+      if (session.metadata.codexThreadId) output.codexThreadId = session.metadata.codexThreadId;
+      if (session.metadata.ocSessionId) output.ocSessionId = session.metadata.ocSessionId;
+      // permissionMode / codexMode 也放在顶层
+      if (session.permissionMode) output.permissionMode = session.permissionMode;
+      if (session.codexMode) output.codexMode = session.codexMode;
+    }
+
+    // metadata 完整保存
+    output.metadata = session.metadata;
+
+    const filePath = this.sessionPath(botName, session.chatId);
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(output, null, 2));
+    } catch (e: any) {
+      console.error(`[Session] 持久化 ${session.chatId} 失败: ${e.message}`);
+    }
+  }
+
+  delete(botName: string, chatId: string): void {
+    // 清除缓存
+    const botCache = this.cache.get(botName);
+    if (botCache) {
+      botCache.delete(chatId);
+    }
+
+    // 删除文件
+    const filePath = this.sessionPath(botName, chatId);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (e: any) {
+      console.error(`[Session] 删除 ${chatId} 失败: ${e.message}`);
+    }
+  }
+
+  cleanupIdle(botName: string, timeoutMs: number): void {
+    const botCache = this.cache.get(botName);
+    if (!botCache) return;
+
+    const now = Date.now();
+    const toRemove: string[] = [];
+
+    for (const [chatId, session] of botCache) {
+      if (now - session.lastUsed > timeoutMs && !session.running) {
+        toRemove.push(chatId);
+      }
+    }
+
+    for (const chatId of toRemove) {
+      botCache.delete(chatId);
+      console.log(`[Session] 清理空闲会话: ${chatId}`);
+    }
+  }
+
+  listActive(botName: string): Session[] {
+    const botCache = this.cache.get(botName);
+    if (!botCache) return [];
+    return Array.from(botCache.values());
+  }
+}

@@ -1,0 +1,513 @@
+// Codex App-Server 模块（v2 协议）
+// 管理 codex app-server 持久进程 + stdio JSON-RPC 通信
+// app-server 与 TUI 交互模式共享底层协议 → 自动触发记忆整合
+
+import type { Subprocess } from 'bun';
+
+// ================================================================
+// 配置
+// ================================================================
+export interface ExecServerConfig {
+  enabled: boolean;
+  startupTimeoutMs: number;
+  fallbackToExec: boolean;
+  /** 单 turn 最大 tool-call 次数，超限强制终止（防 loop 导致 OOM） */
+  maxToolCallsPerTurn: number;
+}
+
+let _config: ExecServerConfig = {
+  enabled: true,
+  startupTimeoutMs: 15000,
+  fallbackToExec: true,
+  maxToolCallsPerTurn: 80,
+};
+
+export function setExecServerConfig(cfg: Partial<ExecServerConfig>) {
+  _config = { ..._config, ...cfg };
+}
+
+// ================================================================
+// 事件类型
+// ================================================================
+export interface AgentEvent {
+  type: 'text_delta' | 'tool_call' | 'turn_result' | 'error';
+  textDelta?: string;
+  toolName?: string;
+  toolInput?: Record<string, any>;
+  threadId?: string;
+  usage?: { inputTokens: number; outputTokens: number };
+  costUSD?: number;
+  durationMs?: number;
+  terminal?: boolean;  // true = 任务真正完成，receiveEvents 停止
+  error?: string;
+}
+
+// ================================================================
+// 客户端（每个 chat 一个实例）
+// ================================================================
+export class CodexAppServerClient {
+  private chatId: string;
+  private nextId = 1;
+  private pendingRequests: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }> = new Map();
+  private eventQueue: AgentEvent[] = [];
+  private resolveNext: ((v: IteratorResult<AgentEvent>) => void) | null = null;
+  private _active = false;
+
+  // 单 turn tool-call 计数（循环保护）
+  private _turnToolCallCount = 0;
+  private _turnActive = false;
+
+  constructor(chatId: string) {
+    this.chatId = chatId;
+  }
+
+  get connected(): boolean { return this._active; }
+  get turnToolCallCount(): number { return this._turnToolCallCount; }
+  setActive(active: boolean): void { this._active = active; }
+
+  /** 通知 client turn 已启动，重置计数器 */
+  notifyTurnStart(): void {
+    this._turnToolCallCount = 0;
+    this._turnActive = true;
+  }
+
+  /** 通知 turn 结束 */
+  notifyTurnEnd(): void {
+    this._turnActive = false;
+  }
+
+  /** 记录一次 tool-call，返回 true 表示未超限 */
+  recordToolCall(name: string): boolean {
+    if (!this._turnActive) return true;
+    this._turnToolCallCount++;
+    if (this._turnToolCallCount > _config.maxToolCallsPerTurn) {
+      console.error(`[app-server] ⚠️ tool-call loop 检测! chat=${this.chatId.slice(-8)}: ${this._turnToolCallCount} 次 > 上限 ${_config.maxToolCallsPerTurn}`);
+      return false;
+    }
+    return true;
+  }
+
+  // ================================================================
+  // 初始化 & 线程管理
+  // ================================================================
+
+  async initialize(): Promise<void> {
+    await this._sendRequest('initialize', {
+      clientInfo: { name: 'cc-gateway', version: '1.0' },
+    });
+    console.log(`[app-server] initialized chat=${this.chatId.slice(-8)}`);
+  }
+
+  async startThread(cwd: string): Promise<string> {
+    const result: any = await this._sendRequest('thread/start', {
+      cwd,
+      model: 'gpt-5.5',
+      modelProvider: 'ccgateway',
+      sandbox: 'danger-full-access',
+      approvalPolicy: 'never',
+    });
+    const threadId = result?.thread?.id || '';
+    if (!threadId) throw new Error('thread/start 未返回 thread.id');
+    console.log(`[app-server] thread started=${threadId.slice(-8)} chat=${this.chatId.slice(-8)}`);
+    return threadId;
+  }
+
+  async resumeThread(threadId: string): Promise<void> {
+    // app-server v2: thread/resume 用于跨进程恢复
+    const result: any = await this._sendRequest('thread/resume', { threadId });
+    console.log(`[app-server] thread resumed=${threadId.slice(-8)} chat=${this.chatId.slice(-8)}`);
+  }
+
+  // ================================================================
+  // 发送消息
+  // ================================================================
+
+  async sendPrompt(threadId: string, prompt: string, cwd: string): Promise<void> {
+    this.notifyTurnStart();
+    await this._sendRequest('turn/start', {
+      threadId,
+      input: [{ type: 'text', text: prompt }],
+      cwd,
+      model: 'gpt-5.5',
+      effort: 'medium',
+    });
+  }
+
+  async *receiveEvents(): AsyncGenerator<AgentEvent> {
+    while (this._active) {
+      const event = await new Promise<AgentEvent>((resolve) => {
+        if (this.eventQueue.length > 0) {
+          resolve(this.eventQueue.shift()!);
+        } else {
+          this.resolveNext = (v: IteratorResult<AgentEvent>) => {
+            this.resolveNext = null;
+            if (v.done) resolve({ type: 'error', error: 'closed' });
+            else resolve(v.value);
+          };
+        }
+      });
+
+      yield event;
+
+      // 只在 agent 空闲（terminal）或出错时停止
+      if (event.type === 'error') break;
+      if (event.type === 'turn_result' && event.terminal) break;
+    }
+  }
+
+  close(): void {
+    this._active = false;
+    for (const [, p] of this.pendingRequests) {
+      p.reject(new Error('client closed'));
+    }
+    this.pendingRequests.clear();
+    if (this.resolveNext) {
+      this.resolveNext({ done: true, value: undefined });
+      this.resolveNext = null;
+    }
+  }
+
+  // ================================================================
+  // Manager 调用接口
+  // ================================================================
+
+  dispatchEvent(event: AgentEvent): void {
+    if (!this._active) return;
+    if (this.resolveNext) {
+      this.resolveNext({ done: false, value: event });
+    } else {
+      this.eventQueue.push(event);
+    }
+  }
+
+  dispatchResponse(id: number, result: unknown, error?: { code: number; message: string }): void {
+    const pending = this.pendingRequests.get(id);
+    if (pending) {
+      this.pendingRequests.delete(id);
+      if (error) {
+        pending.reject(new Error(`app-server error: ${error.message} (code=${error.code})`));
+      } else {
+        pending.resolve(result);
+      }
+    }
+  }
+
+  // ================================================================
+  // 内部
+  // ================================================================
+
+  _sendRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const id = this.nextId++;
+      const req = JSON.stringify({ jsonrpc: '2.0', id, method, params });
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`app-server 请求超时: ${method}`));
+      }, 300000);
+      this.pendingRequests.set(id, { resolve, reject });
+
+      const ok = getAppServerManager()._writeStdin(req + '\n');
+      if (!ok) {
+        clearTimeout(timer);
+        this.pendingRequests.delete(id);
+        reject(new Error(`app-server stdin 写入失败: ${method}`));
+      }
+    });
+  }
+}
+
+// ================================================================
+// 进程管理器（单例）
+// ================================================================
+class CodexAppServerManager {
+  private process: Subprocess | null = null;
+  private clients: Map<string, CodexAppServerClient> = new Map();
+  private activeChatId: string | null = null;
+  private _shuttingDown = false;
+  private _startPromise: Promise<void> | null = null;
+  private stdoutBuffer = '';
+  private readLoopRunning = false;
+  private _initialized = false;  // app-server 只接受一次 initialize
+  private _generation = 0;       // 每次进程重启递增，用于判断 thread 是否过期
+
+  async ensureRunning(): Promise<void> {
+    if (this._shuttingDown) throw new Error('app-server 正在关闭');
+    if (this.process && !this.process.killed) return;
+    if (this._startPromise) { await this._startPromise; return; }
+    this._startPromise = this._spawn();
+    try { await this._startPromise; } finally { this._startPromise = null; }
+  }
+
+  async getClient(chatId: string): Promise<CodexAppServerClient> {
+    await this.ensureRunning();
+
+    // 回收之前的活跃客户端
+    const prev = this.clients.get(this.activeChatId || '');
+    if (prev && this.activeChatId !== chatId) prev.setActive(false);
+
+    let client = this.clients.get(chatId);
+    if (!client) {
+      client = new CodexAppServerClient(chatId);
+      this.clients.set(chatId, client);
+    }
+
+    // 先设置 activeChatId，再发请求——防止 readLoop 先收到响应但找不到 client
+    this.activeChatId = chatId;
+
+    if (!this._initialized) {
+      client.setActive(true);
+      await client.initialize();
+      this._initialized = true;
+    } else {
+      client.setActive(true);
+    }
+
+    return client;
+  }
+
+  removeClient(chatId: string): void {
+    const client = this.clients.get(chatId);
+    if (client) { client.close(); this.clients.delete(chatId); }
+    if (this.activeChatId === chatId) this.activeChatId = null;
+  }
+
+  async shutdown(): Promise<void> {
+    this._shuttingDown = true;
+    for (const [, c] of this.clients) c.close();
+    this.clients.clear();
+    this.activeChatId = null;
+    if (this.process && !this.process.killed) {
+      try {
+        this.process.kill('SIGTERM');
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(() => { try { this.process?.kill('SIGKILL'); } catch {} resolve(); }, 3000);
+          this.process!.exited.then(() => { clearTimeout(t); resolve(); });
+        });
+      } catch {}
+    }
+    this.process = null;
+    console.log('[app-server] 已关闭');
+  }
+  /** 健康检查：进程存活但 readLoop 已停止 */
+  needsRestart(): boolean {
+    return this.process !== null && !this.process.killed && !this.readLoopRunning;
+  }
+
+  /** 强制重启 app-server（用于健康检查自动恢复） */
+  async forceRestart(): Promise<void> {
+    console.warn('[app-server] 健康检查触发强制重启...');
+    await this.shutdown();
+    this._shuttingDown = false;
+    this._initialized = false;
+  }
+
+  _writeStdin(data: string): boolean {
+    if (!this.process || this.process.killed) return false;
+    try { this.process.stdin!.write(data); return true; } catch { return false; }
+  }
+
+  private async _spawn(): Promise<void> {
+    console.log('[app-server] 启动 codex app-server (stdio)...');
+    this.process = Bun.spawn(
+      ['codex', 'app-server',
+        '--listen', 'stdio://',
+        '-c', 'model_provider=ccgateway',
+        '-c', 'sandbox.mode=danger-full-access',
+        '--enable', 'memories',
+      ],
+      { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+    );
+    this._readStderr().catch((err) => {
+      console.error(`[app-server] stderr reader error: ${err.message}`);
+    });
+    this.process.exited
+      .then(async (code: number | null) => {
+        console.error(`[app-server] 进程退出 code=${code}`);
+        this.process = null;
+        this.readLoopRunning = false;
+        this._initialized = false;
+        this._generation++;
+
+        // 先等待启动 promise 完成，避免 _spawn 还在等 _startReadLoop
+        if (this._startPromise) {
+          try { await this._startPromise; } catch {}
+          this._startPromise = null;
+        }
+
+        // 安全关闭所有客户端
+        for (const [, c] of this.clients) {
+          try { c.close(); } catch {}
+        }
+        this.clients.clear();
+        this.activeChatId = null;
+      })
+      .catch((err) => {
+        console.error(`[app-server] process.exited handler error: ${err.message}`);
+      });
+    // 给 app-server 短暂时间完成内部初始化
+    await new Promise(r => setTimeout(r, 500));
+    this._startReadLoop();
+    console.log('[app-server] 已就绪 (stdio)');
+  }
+
+  private _startReadLoop(): void {
+    if (this.readLoopRunning) return;
+    this.readLoopRunning = true;
+    this._readLoop();
+  }
+
+  private async _readLoop(): Promise<void> {
+    if (!this.process?.stdout) return;
+    const reader = this.process.stdout.getReader();
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        this.stdoutBuffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = this.stdoutBuffer.indexOf('\n')) !== -1) {
+          const line = this.stdoutBuffer.slice(0, nl).trim();
+          this.stdoutBuffer = this.stdoutBuffer.slice(nl + 1);
+          if (line) this._processLine(line);
+        }
+      }
+    } catch (e: any) {
+      if (!this._shuttingDown) console.error(`[app-server] read error: ${e.message}`);
+    } finally {
+      try { reader.releaseLock(); } catch {}
+      this.readLoopRunning = false;
+    }
+  }
+
+  private _processLine(line: string): void {
+    let msg: any;
+    try { msg = JSON.parse(line); } catch { return; }
+
+    if ('id' in msg && msg.id != null) {
+      const active = this.clients.get(this.activeChatId || '');
+      if (active) active.dispatchResponse(msg.id, msg.result, msg.error);
+    } else if (msg.method) {
+      const active = this.clients.get(this.activeChatId || '');
+      if (active) this._handleNotification(active, msg.method, msg.params || {});
+    }
+  }
+
+  private _handleNotification(client: CodexAppServerClient, method: string, params: any): void {
+    try {
+      switch (method) {
+        case 'thread/started':
+        client.notifyTurnStart();
+        break;
+
+      case 'turn/started':
+        client.notifyTurnStart();
+        break;
+
+      case 'thread/status/changed':
+        // params: { threadId, status: { type: "idle" | "active" } }
+        if (params.status?.type === 'idle') {
+          // agent 真正停下来等用户输入 → 任务完成
+          client.notifyTurnEnd();
+          client.dispatchEvent({ type: 'turn_result', terminal: true, usage: { inputTokens: 0, outputTokens: 0 } });
+        }
+        break;
+
+        case 'item/started':
+        case 'item/completed': {
+          // 统计 tool-use / function_call 类型
+          const itemType = params.item?.type;
+          if (itemType === 'tool_use' || itemType === 'function_call') {
+            const toolName = params.item?.name || params.item?.function_name || 'unknown';
+            if (method === 'item/completed') {
+              const ok = client.recordToolCall(toolName);
+              if (!ok) {
+                // 超限，发送 error 事件强制终止本轮
+                client.dispatchEvent({
+                  type: 'error',
+                  error: `⚠️ Tool-call loop 检测：本 turn 已达 ${client.turnToolCallCount} 次工具调用（上限 ${_config.maxToolCallsPerTurn}），已强制终止。建议拆分为更小任务。`,
+                });
+              }
+            }
+          }
+          break;
+        }
+
+        case 'remoteControl/status/changed':
+        case 'account/rateLimits/updated':
+        case 'thread/tokenUsage/updated':
+          // 元数据通知，暂不处理
+          break;
+
+        case 'item/agentMessage/delta':
+          if (params.delta) client.dispatchEvent({ type: 'text_delta', textDelta: params.delta });
+          break;
+
+        case 'turn/completed':
+          client.notifyTurnEnd();
+          client.dispatchEvent({
+            type: 'turn_result',
+            terminal: false, // 非终点，agent 可能自动继续
+            usage: {
+              inputTokens: params.turn?.usage?.inputTokens || 0,
+              outputTokens: params.turn?.usage?.outputTokens || 0,
+            },
+            costUSD: params.turn?.usage?.costUSD || 0,
+            durationMs: params.turn?.durationMs || 0,
+          });
+          break;
+
+        case 'item/reasoning/textDelta':
+        case 'item/reasoning/summaryTextDelta':
+          break;
+
+        case 'turn/plan/updated':
+        case 'turn/diff/updated':
+          break;
+
+        case 'warning':
+        case 'deprecationNotice':
+          console.warn(`[app-server] ${method}:`, params);
+          break;
+
+        default:
+          // 静默忽略未知通知
+          break;
+      }
+    } catch (err) {
+      console.error(`[app-server] Error handling notification ${method}:`, err);
+    }
+  }
+
+  private async _readStderr(): Promise<void> {
+    if (!this.process) return;
+    try {
+      const stderr = await new Response(this.process.stderr).text();
+      if (stderr.trim()) console.error(`[app-server] stderr:`, stderr.slice(0, 500));
+    } catch {}
+  }
+
+  // 暴露当前进程代际，codex.ts 用于判断 thread 是否过期
+  get generation(): number { return this._generation; }
+}
+
+// 单例
+let _manager: CodexAppServerManager | null = null;
+
+export function getAppServerManager(): CodexAppServerManager {
+  if (!_manager) _manager = new CodexAppServerManager();
+  return _manager;
+}
+
+// 向后兼容别名
+export const getExecServerManager = getAppServerManager;
+
+export async function shutdownAppServer(): Promise<void> {
+  if (_manager) { await _manager.shutdown(); _manager = null; }
+}
+
+// 向后兼容别名
+export const shutdownExecServer = shutdownAppServer;
+
+// 向后兼容的类型别名
+export type CodexExecServerClient = CodexAppServerClient;

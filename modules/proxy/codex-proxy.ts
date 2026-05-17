@@ -1,0 +1,613 @@
+// Codex Proxy — Responses API ↔ Chat Completions 双向转换
+// 端口 18900 · 可作为模块导入或被 Bun 直接运行
+
+import { getCurrentBot } from '../bot-context';
+import { buildSystemPrompt, resolveCapabilities, DEFAULT_TERMINAL_CAPS } from '../prompt-builder';
+
+// ================================================================
+// 配置（从 config.json 读取，不再硬编码）
+// ================================================================
+interface CodexProxyConfig {
+  model: string;
+  reportedModel: string;
+  upstream: string;
+  apiKey: string;
+}
+
+let _codexConfig: CodexProxyConfig | null = null;
+
+export function initCodexProxyConfig(cfg: CodexProxyConfig) {
+  _codexConfig = cfg;
+  console.log(`[Codex Proxy] 配置已加载: model=${cfg.model}, upstream=${cfg.upstream}`);
+}
+
+function getConfig(): CodexProxyConfig {
+  if (!_codexConfig) {
+    // Fallback: 尝试从 config.json 读取
+    try {
+      const fs = require('fs');
+      const configPath = process.env.HOME + '/Desktop/cc-gateway/config.json';
+      const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      const codex = raw.codex || {};
+      const providers = raw.providers || {};
+      let apiKey = '';
+      for (const name of Object.keys(providers)) {
+        apiKey = providers[name].apiKey || '';
+        if (apiKey) break;
+      }
+      _codexConfig = {
+        model: codex.model || 'deepseek-v4-pro',
+        reportedModel: codex.reportedModel || 'gpt-5.5',
+        upstream: codex.upstream || 'https://api.deepseek.com/v1/chat/completions',
+        apiKey,
+      };
+      console.log('[Codex Proxy] 从 config.json 加载配置');
+    } catch (e: any) {
+      console.error(`[Codex Proxy] 无法加载配置: ${e.message}`);
+    }
+  }
+  return _codexConfig!;
+}
+
+const MODEL = () => getConfig().model;
+const REPORTED_MODEL = () => getConfig().reportedModel;
+const UPSTREAM = () => getConfig().upstream;
+const API_KEY = () => getConfig().apiKey;
+
+// ================================================================
+// 类型
+// ================================================================
+
+interface ChatMessage {
+  role: string;
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  reasoning_content?: string;
+}
+
+interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+interface PendingToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+  outputIndex: number;
+  itemId: string;
+  started: boolean;
+}
+
+interface ResponseItem {
+  id: string;
+  type: string;
+  [key: string]: any;
+}
+
+// ================================================================
+// 1. 请求翻译: Responses → Chat Completions
+// ================================================================
+function responsesToChat(body: any): { model: string; messages: ChatMessage[]; stream: boolean; max_tokens?: number; tools?: any[] } {
+  const chat: { model: string; messages: ChatMessage[]; stream: boolean; max_tokens?: number; tools?: any[] } = {
+    model: MODEL(),
+    messages: [],
+    stream: true,
+  };
+  chat.max_tokens = body.max_output_tokens || 8192;
+
+  // 工具转换
+  if (body.tools?.length) {
+    const allNames = body.tools.map((t: any) => t.name || t.function?.name).join(', ');
+    console.log(`[Codex] tools: ${allNames}`);
+    chat.tools = body.tools
+      .map((t: any) => {
+        if (t.function) return t;
+        const p = JSON.parse(JSON.stringify(t.parameters || {}, (_: string, v: any) => v === null ? undefined : v));
+        if (!p.type) p.type = 'object';
+        const toolName = (t.name === 'web_search' || t.function?.name === 'web_search') ? 'web_search_20250305' : (t.name || '');
+        return { type: 'function', function: { name: toolName, description: t.description || '', parameters: p } };
+      })
+      .filter((t: any) => t.function?.name);
+  }
+
+  // 消息转换
+  let input: any[] = body.input || [];
+  if (input.length > 0) {
+    // 防护：输入历史过长时截断，防止 tool call loop 导致 OOM
+    const MAX_INPUT_ITEMS = 120;
+    if (input.length > MAX_INPUT_ITEMS) {
+      const truncated = input.length - MAX_INPUT_ITEMS;
+      // 保留 system 消息（如果有）+ 最近 MAX_INPUT_ITEMS 条
+      const systemItems = input.filter((m: any) => m.role === 'system' || m.role === 'developer');
+      const nonSystem = input.filter((m: any) => m.role !== 'system' && m.role !== 'developer');
+      const kept = nonSystem.slice(-(MAX_INPUT_ITEMS - systemItems.length));
+      input = [...systemItems, ...kept];
+      console.log(`[Codex] ⚠️ 截断输入: ${input.length + truncated} → ${input.length} 条 (丢弃最旧 ${truncated} 条)`);
+    }
+    const types = input.map((m: any) => m.type || ('msg:' + m.role)).join(',');
+    console.log(`[Codex] input types: [${types}]`);
+    console.log(`[Codex] input items: ${input.length}`);
+  }
+  let pendingReasoning = '';
+  let i = 0;
+
+  while (i < input.length) {
+    const msg = input[i];
+
+    if (msg.type === 'reasoning') {
+      const summary = msg.summary || [];
+      pendingReasoning = summary.map((s: any) => s.text || s.summary_text || '').join('').trim();
+      i++;
+      continue;
+    }
+
+    if (msg.type === 'function_call') {
+      const tc: ToolCall = {
+        id: msg.call_id || '',
+        type: 'function',
+        function: { name: msg.name || '', arguments: msg.arguments || '{}' },
+      };
+      const lastMsg = chat.messages[chat.messages.length - 1];
+      // Only append to previous assistant if it already has tool_calls (multi-call in one turn)
+      // Do NOT append to assistant that has text content — that breaks tool_call/tool pairing
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.tool_calls?.length) {
+        lastMsg.tool_calls.push(tc);
+      } else {
+        const asstMsg: ChatMessage = { role: 'assistant', content: null, tool_calls: [tc] };
+        if (pendingReasoning) { asstMsg.reasoning_content = pendingReasoning; pendingReasoning = ''; }
+        chat.messages.push(asstMsg);
+      }
+      i++;
+      continue;
+    }
+
+    if (msg.type === 'function_call_output') {
+      // CRITICAL: tool_call_id must exactly match the tool_call.id from the assistant message
+      // Some upstreams send call_id without 'call_' prefix, some with — keep it exactly as-is
+      chat.messages.push({ role: 'tool', tool_call_id: msg.call_id || '', content: msg.output || '' });
+      i++;
+      continue;
+    }
+
+    // 普通消息
+    let content: string;
+    let embeddedToolCalls: ToolCall[] | undefined;
+    if (typeof msg.content === 'string') {
+      content = msg.content;
+    } else if (Array.isArray(msg.content)) {
+      const textParts: string[] = [];
+      const calls: ToolCall[] = [];
+      for (const b of msg.content) {
+        if (b.type === 'function_call') {
+          calls.push({ id: b.call_id || '', type: 'function', function: { name: b.name || '', arguments: b.arguments || '{}' } });
+        } else {
+          const t = b.text || b.input_text || b.output_text || '';
+          if (t) textParts.push(t);
+        }
+      }
+      content = textParts.join('');
+      if (calls.length > 0) embeddedToolCalls = calls;
+    } else {
+      content = '';
+    }
+    const role: string = msg.role === 'developer' ? 'system' : (msg.role || 'user');
+
+    const last = chat.messages[chat.messages.length - 1];
+    if (last && last.role === role && role === 'user') {
+      last.content = (last.content || '') + '\n' + content;
+    } else {
+      const chatMsg: ChatMessage = { role, content };
+      if (role === 'assistant') {
+        if (pendingReasoning) { chatMsg.reasoning_content = pendingReasoning; pendingReasoning = ''; }
+        if (embeddedToolCalls) chatMsg.tool_calls = embeddedToolCalls;
+        // If previous message is assistant(tool_calls) with no content (from function_call),
+        // merge its tool_calls into this text-bearing assistant to keep tool_call/tool pairing
+        if (last?.role === 'assistant' && last?.tool_calls?.length) {
+          chatMsg.tool_calls = [...(last.tool_calls), ...(chatMsg.tool_calls || [])];
+          // Preserve reasoning_content from the merged function_call assistant
+          if (last.reasoning_content && !chatMsg.reasoning_content) chatMsg.reasoning_content = last.reasoning_content;
+          chat.messages.pop(); // remove empty-shell assistant(tool_calls)
+        }
+      }
+      chat.messages.push(chatMsg);
+    }
+    i++;
+  }
+
+  // Validate tool_call/tool pairing before returning
+  chat.messages = validateToolPairing(chat.messages);
+  // DEBUG: log converted messages
+  console.log(`[Codex] converted ${chat.messages.length} messages:`);
+  chat.messages.forEach((m: ChatMessage, idx: number) => {
+    const tcs = m.tool_calls?.map(tc => tc.id.slice(0,16)).join(',') || '';
+    const tci = m.tool_call_id?.slice(0,16) || '';
+    console.log(`[Codex]   [${idx}] ${m.role}${tcs ? ' tool_calls=['+tcs+']' : ''}${tci ? ' tool_call_id='+tci : ''}`);
+  });
+  return chat;
+}
+
+// ================================================================
+// 1.5 工具消息配对验证
+// 确保每个 assistant(tool_calls) 后面紧跟对应数量的 tool 消息，
+// 且 tool_call_id 一一对应。deepseek-v4-pro 等严格 API 需要此验证。
+// ================================================================
+function validateToolPairing(messages: ChatMessage[]): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let i = 0;
+
+  while (i < messages.length) {
+    const msg = messages[i];
+
+    if (msg.role === 'assistant' && msg.tool_calls?.length) {
+      // Collect this assistant's tool_call ids
+      const expectedIds = new Set(msg.tool_calls.map(tc => tc.id));
+      const collectedTools: ChatMessage[] = [];
+      const seenIds = new Set<string>();
+      let j = i + 1;
+
+      // Collect following tool messages
+      while (j < messages.length && messages[j].role === 'tool') {
+        collectedTools.push(messages[j]);
+        seenIds.add(messages[j].tool_call_id || '');
+        j++;
+      }
+
+      // Check for exact match
+      const unmatchedCalls = msg.tool_calls.filter(tc => !seenIds.has(tc.id));
+      const unmatchedTools = collectedTools.filter(t => !expectedIds.has(t.tool_call_id || ''));
+
+      if (unmatchedCalls.length > 0 || unmatchedTools.length > 0) {
+        console.warn(`[Codex] ⚠️ Tool pairing mismatch:`);
+        console.warn(`[Codex]   expected: [${[...expectedIds].map(id=>id.slice(0,16)).join(', ')}]`);
+        console.warn(`[Codex]   found:    [${[...seenIds].map(id=>id.slice(0,16)).join(', ')}]`);
+        if (unmatchedCalls.length > 0) console.warn(`[Codex]   unmatched calls: [${unmatchedCalls.map(tc=>tc.id.slice(0,16)).join(', ')}]`);
+        if (unmatchedTools.length > 0) console.warn(`[Codex]   unmatched tools: [${unmatchedTools.map(t=>t.tool_call_id?.slice(0,16)).join(', ')}]`);
+        const matchingTools = collectedTools.filter(t => expectedIds.has(t.tool_call_id || ''));
+        if (matchingTools.length > 0) {
+          // Strip unmatched tool_calls from assistant, keep only those with matching tools
+          msg.tool_calls = msg.tool_calls!.filter(tc => seenIds.has(tc.id));
+          if (msg.tool_calls.length > 0) {
+            result.push(msg);
+            result.push(...matchingTools);
+          }
+        } else {
+          // P1 修复：不再丢弃整个 assistant 消息，而是保留原始内容并附加警告
+          // 这样下游上下文不会完全丢失
+          const warning = '[⚠️ CC Gateway 警告：tool_call 未找到匹配的 tool 响应，保留原始消息防止上下文丢失]';
+          console.warn(`[Codex] ⚠️ 保留原始 assistant 消息（附带警告），而非丢弃`);
+          const preserved: ChatMessage = {
+            role: 'assistant',
+            content: warning + '\n' + (msg.content || ''),
+            tool_calls: undefined, // 移除无效的 tool_calls
+          };
+          if (msg.reasoning_content) preserved.reasoning_content = msg.reasoning_content;
+          result.push(preserved);
+        }
+        i = j;
+        continue;
+      }
+
+      // Perfect match — keep as-is
+      result.push(msg);
+      result.push(...collectedTools);
+      i = j;
+      continue;
+    }
+
+    // Not an assistant with tool_calls — keep as-is
+    result.push(msg);
+    i++;
+  }
+
+  return result;
+}
+
+// ================================================================
+// 2. 响应翻译: Chat SSE → Responses SSE
+// ================================================================
+async function streamResponse(upstreamRes: Response, resWriter: WritableStreamDefaultWriter<Uint8Array>): Promise<void> {
+  const enc = new TextEncoder();
+  let accumulatedText = '';
+  let accumulatedReasoning = '';
+  let outputIndex = 0;
+  const items: ResponseItem[] = [];
+  let msgId = '';
+  let msgIdx = -1;
+  let rsnIdx = -1;
+  let rsnActive = false, msgActive = false;
+  let hasStarted = false;
+  let finalUsage: any = {};
+  const pendingToolCalls = new Map<number, PendingToolCall>();
+
+  let streamBroken = false;
+  function emit(event: string, data: any): void {
+    if (streamBroken) return;
+    try {
+      resWriter.write(enc.encode(`event: ${event}\ndata: ${JSON.stringify({ type: event, ...data })}\n\n`));
+    } catch {
+      streamBroken = true;
+    }
+  }
+
+  function ensureStarted(): void {
+    if (hasStarted) return;
+    hasStarted = true;
+    emit('response.created', { response: { id: 'resp_' + Date.now(), object: 'response', model: REPORTED_MODEL(), status: 'in_progress', output: [] } });
+    emit('response.in_progress', { response: { id: 'resp_' + Date.now(), object: 'response', model: REPORTED_MODEL(), status: 'in_progress' } });
+  }
+
+  const reader = upstreamRes.body!.getReader();
+  try {
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      let done: boolean, value: Uint8Array;
+      try {
+        ({ done, value } = await reader.read());
+      } catch {
+        break;
+      }
+      if (done || streamBroken) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+
+      for (const line of lines) {
+        if (streamBroken) break;
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        let chunk: any;
+        try { chunk = JSON.parse(data); } catch { continue; }
+
+        const delta = chunk.choices?.[0]?.delta || {};
+        const finish = chunk.choices?.[0]?.finish_reason;
+
+        if (chunk.usage) finalUsage = chunk.usage;
+
+        if (delta.reasoning_content) {
+          ensureStarted();
+          if (!rsnActive) {
+            rsnIdx = outputIndex++;
+            emit('response.output_item.added', { output_index: rsnIdx, item: { id: 'rsn_0', type: 'reasoning', summary: [], status: 'in_progress' } });
+            rsnActive = true;
+            items.push({ id: 'rsn_0', type: 'reasoning', summary: [], status: 'completed' });
+          }
+          accumulatedReasoning += delta.reasoning_content;
+          emit('response.reasoning_text.delta', { item_id: 'rsn_0', output_index: rsnIdx, delta: delta.reasoning_content });
+        }
+
+        if (delta.tool_calls) {
+          ensureStarted();
+          for (const tc of delta.tool_calls) {
+            const idx: number = tc.index ?? 0;
+            let pending = pendingToolCalls.get(idx);
+            if (!pending) {
+              pending = {
+                id: tc.id || ('call_' + Date.now() + '_' + idx),
+                name: '',
+                arguments: '',
+                outputIndex: outputIndex++,
+                itemId: 'fcal_' + Date.now() + '_' + idx,
+                started: false,
+              };
+              pendingToolCalls.set(idx, pending);
+            }
+            if (tc.id) pending.id = tc.id;
+            if (tc.function?.name) {
+              pending.name = tc.function.name;
+            }
+            if (tc.function?.arguments) {
+              pending.arguments += tc.function.arguments;
+              if (!pending.started) {
+                pending.started = true;
+                emit('response.output_item.added', {
+                  output_index: pending.outputIndex,
+                  item: { id: pending.itemId, type: 'function_call', call_id: pending.id, name: pending.name, arguments: '', status: 'in_progress' }
+                });
+                items.push({ id: pending.itemId, type: 'function_call', call_id: pending.id, name: pending.name, arguments: '', status: 'completed' });
+              }
+              emit('response.function_call_arguments.delta', {
+                item_id: pending.itemId, output_index: pending.outputIndex, delta: tc.function.arguments
+              });
+            }
+          }
+        }
+
+        if (delta.content) {
+          ensureStarted();
+          if (!msgActive) {
+            if (rsnActive) {
+              emit('response.output_item.done', { output_index: rsnIdx, item: { id: 'rsn_0', type: 'reasoning', summary: [{ type: 'summary_text', text: accumulatedReasoning }], status: 'completed' } });
+              rsnActive = false;
+            }
+            msgIdx = outputIndex++;
+            msgId = 'msg_' + Date.now();
+            emit('response.output_item.added', { output_index: msgIdx, item: { id: msgId, type: 'message', role: 'assistant', content: [], status: 'in_progress' } });
+            emit('response.content_part.added', { item_id: msgId, output_index: msgIdx, content_index: 0, part: { type: 'output_text', text: '' } });
+            msgActive = true;
+            items.push({ id: msgId, type: 'message', role: 'assistant', content: [], status: 'completed' });
+          }
+          accumulatedText += delta.content;
+          emit('response.output_text.delta', { item_id: msgId, output_index: msgIdx, content_index: 0, delta: delta.content });
+        }
+
+        if (finish) {
+          if (rsnActive) {
+            if (accumulatedReasoning) {
+              const rsnItem: ResponseItem = { id: 'rsn_0', type: 'reasoning', summary: [{ type: 'summary_text', text: accumulatedReasoning }], status: 'completed' };
+              items[rsnIdx] = rsnItem;
+              emit('response.output_item.done', { output_index: rsnIdx, item: rsnItem });
+            }
+            rsnActive = false;
+          }
+          for (const [, pending] of pendingToolCalls) {
+            if (pending.started) {
+              const fcItem: ResponseItem = { id: pending.itemId, type: 'function_call', call_id: pending.id, name: pending.name, arguments: pending.arguments, status: 'completed' };
+              items[pending.outputIndex] = fcItem;
+              emit('response.output_item.done', { output_index: pending.outputIndex, item: fcItem });
+            }
+          }
+          pendingToolCalls.clear();
+          if (msgActive) {
+            const msgItem: ResponseItem = { id: msgId, type: 'message', role: 'assistant', content: [{ type: 'output_text', text: accumulatedText }], status: 'completed' };
+            items[msgIdx] = msgItem;
+            emit('response.output_text.done', { item_id: msgId, output_index: msgIdx, content_index: 0, text: accumulatedText });
+            emit('response.content_part.done', { item_id: msgId, output_index: msgIdx, content_index: 0, part: { type: 'output_text', text: accumulatedText } });
+            emit('response.output_item.done', { output_index: msgIdx, item: msgItem });
+            msgActive = false;
+          }
+          emit('response.completed', {
+            response: {
+              id: 'resp_' + Date.now(), object: 'response', model: REPORTED_MODEL(), status: 'completed',
+              output: items,
+              usage: {
+                input_tokens: finalUsage.prompt_tokens || 0,
+                output_tokens: finalUsage.completion_tokens || 0,
+                total_tokens: finalUsage.total_tokens || 0,
+              },
+            }
+          });
+          accumulateProxyUsage(finalUsage.prompt_tokens || 0, finalUsage.completion_tokens || 0);
+        }
+      }
+    }
+  } catch {
+    // 静默处理
+  } finally {
+    try { reader.cancel(); } catch {}
+  }
+}
+
+// ================================================================
+// ================================================================
+// usage 累加器 — 供网关读取 Codex 的 Token/成本统计
+// ================================================================
+let _proxyUsage = { inputTokens: 0, outputTokens: 0 };
+
+export function getProxyUsage() {
+  return { ..._proxyUsage };
+}
+
+export function resetProxyUsage() {
+  _proxyUsage = { inputTokens: 0, outputTokens: 0 };
+}
+
+export function accumulateProxyUsage(inputTokens: number, outputTokens: number) {
+  _proxyUsage.inputTokens += inputTokens;
+  _proxyUsage.outputTokens += outputTokens;
+}
+
+// 3. HTTP Server
+// ================================================================
+let server: any = null;
+
+export function startCodexProxy(port = 18900): Promise<number> {
+  return new Promise((resolve) => {
+    server = Bun.serve({
+      port,
+      idleTimeout: 120,
+      async fetch(req: Request): Promise<Response> {
+        try {
+          const url = new URL(req.url);
+
+          if (req.method === 'GET' && url.pathname === '/health')
+            return new Response(JSON.stringify({ status: 'ok', model: REPORTED_MODEL() }), { headers: { 'Content-Type': 'application/json' } });
+
+          if (req.method === 'GET' && url.pathname.includes('/models'))
+            return new Response(JSON.stringify({ object: 'list', data: [{ id: REPORTED_MODEL(), object: 'model', created: Date.now(), owned_by: 'openai' }] }), { headers: { 'Content-Type': 'application/json' } });
+
+          if (req.method === 'POST' && (url.pathname === '/v1/responses' || url.pathname.includes('/responses'))) {
+            const body = await req.json();
+            const chatReq = responsesToChat(body);
+
+            // 🧠 动态注入灵魂 + IM 能力到系统 Prompt
+            const ctx = getCurrentBot();
+            const botName = ctx?.botName || 'CodexBot';
+
+            const systemPrompt = buildSystemPrompt({
+              caps: ctx?.caps || null,
+              botName,
+            });
+            console.log(`[Codex] 📝 system prompt built (${systemPrompt.length} chars, bot=${botName})`);
+
+            let sysMsg = chatReq.messages.find((m: ChatMessage) => m.role === 'system');
+            if (!sysMsg) {
+              sysMsg = { role: 'system', content: '' };
+              chatReq.messages.unshift(sysMsg);
+            }
+            if (typeof sysMsg.content !== 'string') sysMsg.content = '';
+            // 追加到已有 system message 后面
+            sysMsg.content = sysMsg.content + '\n\n---\n\n' + systemPrompt;
+
+            const roles = chatReq.messages?.map((m: ChatMessage) => m.role).join(',');
+            console.log(`[Codex] → ${chatReq.model} [${roles}] tools:${chatReq.tools?.length || 0}`);
+
+            const ac = new AbortController();
+            const timeout = setTimeout(() => ac.abort(), 180_000);
+
+            let upstreamRes: Response;
+            try {
+              upstreamRes = await fetch(UPSTREAM(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY()}` },
+                body: JSON.stringify(chatReq),
+                signal: ac.signal,
+              });
+            } catch (e: any) {
+              console.error(`[Codex] ❌ fetch failed: ${e.message}`);
+              return new Response(JSON.stringify({ error: 'upstream unavailable' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+            } finally {
+              clearTimeout(timeout);
+            }
+
+            if (!upstreamRes.ok) {
+              const errText = await upstreamRes.text();
+              console.error(`[Codex] ❌ ${upstreamRes.status}: ${errText.slice(0, 200)}`);
+              return new Response(JSON.stringify({ error: errText.slice(0, 500) }), { status: upstreamRes.status, headers: { 'Content-Type': 'application/json' } });
+            }
+
+            const { readable, writable } = new TransformStream();
+            const writer = writable.getWriter();
+            streamResponse(upstreamRes, writer).catch((e: any) => {
+              // 上游连接断开或客户端已关闭，静默处理（codex 进程被杀等常见场景）
+              console.error(`[Codex] streamResponse 断开: ${e?.message || e}`);
+            }).finally(() => {
+              if (!writer.closed) writer.close().catch(() => {});
+            });
+            return new Response(readable, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } });
+          }
+
+          return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
+        } catch (e: any) {
+          console.error(`[Codex] 💥 unhandled: ${e.message}`);
+          return new Response(JSON.stringify({ error: 'internal error' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+        }
+      },
+    });
+    console.log(`[Codex Proxy] :${server.port} → ${UPSTREAM()}`);
+    resolve(server.port);
+  });
+}
+
+export function stopCodexProxy(): Promise<void> {
+  return new Promise((resolve) => {
+    if (server) {
+      server.stop();
+      console.log('[Codex Proxy] 已关闭');
+    }
+    resolve();
+  });
+}
+
+// ================================================================
+// 直接运行: bun run codex-proxy.ts
+// ================================================================
+if (import.meta.main) {
+  startCodexProxy();
+}
