@@ -34,6 +34,7 @@ export class TelegramAdapter implements IMModule {
   private readonly failureThreshold = 5;    // 连续 N 次失败后进入熔断
   private readonly recoveryInterval = 30_000; // 熔断后每 30s 试探一次
   private warnedCircuitOpen = false;  // 避免重复打印熔断日志
+  private warnedPollError = false;    // 避免重复打印轮询错误日志
 
   constructor(cfg: TelegramConfig) {
     this.token = cfg.token;
@@ -119,7 +120,10 @@ export class TelegramAdapter implements IMModule {
         success = true;
       }
     } catch (e: any) {
-      console.error('[Telegram] 长轮询错误:', e.message);
+      if (!this.warnedPollError) {
+        console.error('[Telegram] 长轮询错误:', e.message);
+        this.warnedPollError = true;
+      }
     }
 
     if (success) {
@@ -140,6 +144,7 @@ export class TelegramAdapter implements IMModule {
     this.consecutiveFailures = 0;
     this.backoffMs = 100;
     this.warnedCircuitOpen = false;
+    this.warnedPollError = false;
   }
 
   /** 失败后指数退避，超过阈值进入熔断 */

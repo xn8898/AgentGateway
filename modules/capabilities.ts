@@ -122,12 +122,6 @@ export function parseToBlocks(text: string, caps: IMCapabilities): UnifiedBlock[
       make: (m) => ({ type: 'file', url: m[2], filename: m[1] }),
     });
   }
-  if (caps.audioSend) {
-    patterns.push({
-      regex: /🎙️\s*\[([^\]]*)\]\((file:\/\/[^)]+)\)/g,
-      make: (m) => ({ type: 'audio', url: m[2], filename: m[1] }),
-    });
-  }
 
   // 表格：仅在有 cardMessage 能力时解析
   // 匹配 markdown 表格：表头行 | 分隔行 | 数据行...

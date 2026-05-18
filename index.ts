@@ -966,24 +966,29 @@ async function main() {
   async function gracefulShutdown(signal: string) {
     console.log(`[Shutdown] 收到 ${signal}，优雅关闭中...`);
     for (const bot of bots) bot.im.stop();
+
+    // 立即关闭代理，让正在等待上游响应的请求快速失败
+    // 这样 handleMessage 的 catch/finally 才能执行，activeRequests 才能递减
+    await stopAnthropicProxy();
+    await stopOpenCodeServer();
+
     console.log('[Shutdown] 持久化所有 session...');
     for (const bot of bots) {
       for (const [chatId, session] of bot.sessions.entries()) {
         try { bot.sessionManager.persist(bot.name, session); } catch {}
       }
     }
-    const DRAIN_TIMEOUT = 30_000;
+    const DRAIN_TIMEOUT = 10_000;
     const start = Date.now();
     while (activeRequests > 0 && Date.now() - start < DRAIN_TIMEOUT) {
       console.log(`[Shutdown] 等待 ${activeRequests} 个请求完成...`);
       await new Promise(r => setTimeout(r, 500));
     }
     if (activeRequests > 0) {
-      console.warn(`[Shutdown] ⚠️ 超时，仍有 ${activeRequests} 个请求未完成`);
+      console.warn(`[Shutdown] ⚠️ 超时，仍有 ${activeRequests} 个请求未完成，强制退出`);
     } else {
       console.log('[Shutdown] 所有请求已完成');
     }
-    await stopAnthropicProxy();
     console.log('[Shutdown] 所有服务已关闭');
     process.exit(0);
   }

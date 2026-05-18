@@ -91,10 +91,11 @@ interface ResponseItem {
 // 1. 请求翻译: Responses → Chat Completions
 // ================================================================
 function responsesToChat(body: any): { model: string; messages: ChatMessage[]; stream: boolean; max_tokens?: number; tools?: any[] } {
-  const chat: { model: string; messages: ChatMessage[]; stream: boolean; max_tokens?: number; tools?: any[] } = {
+  const chat: { model: string; messages: ChatMessage[]; stream: boolean; max_tokens?: number; tools?: any[]; thinking?: { type: string } } = {
     model: MODEL(),
     messages: [],
     stream: true,
+    thinking: { type: 'disabled' },  // Codex 不兼容 thinking 模式，content 全 null 导致流断开
   };
   chat.max_tokens = body.max_output_tokens || 8192;
 
@@ -528,20 +529,23 @@ export function accumulateProxyUsage(inputTokens: number, outputTokens: number) 
 // 3. 请求处理器（供主代理端口 18899 按路径分发调用）
 // ================================================================
 
+import type * as http from 'http';
+
 export async function handleCodexRequest(
   reqBody: string,
   reqPath: string,
-  reqMethod: string
-): Promise<{ status: number; headers: Record<string, string>; body: string | ReadableStream }> {
+  reqMethod: string,
+  res: http.ServerResponse
+): Promise<void> {
   try {
     // GET /health
     if (reqMethod === 'GET' && reqPath === '/health') {
-      return { status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ok', model: REPORTED_MODEL() }) };
+      res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status: 'ok', model: REPORTED_MODEL() })); return;
     }
 
     // GET /v1/models
     if (reqMethod === 'GET' && reqPath.includes('/models')) {
-      return { status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ object: 'list', data: [{ id: REPORTED_MODEL(), object: 'model', created: Date.now(), owned_by: 'openai' }] }) };
+      res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ object: 'list', data: [{ id: REPORTED_MODEL(), object: 'model', created: Date.now(), owned_by: 'openai' }] })); return;
     }
 
     // POST /v1/responses → Chat Completions
@@ -583,7 +587,7 @@ export async function handleCodexRequest(
         });
       } catch (e: any) {
         console.error(`[Codex] ❌ fetch failed: ${e.message}`);
-        return { status: 502, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'upstream unavailable' }) };
+        res.writeHead(502, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'upstream unavailable' })); return;
       } finally {
         clearTimeout(timeout);
       }
@@ -591,21 +595,37 @@ export async function handleCodexRequest(
       if (!upstreamRes.ok) {
         const errText = await upstreamRes.text();
         console.error(`[Codex] ❌ ${upstreamRes.status}: ${errText.slice(0, 200)}`);
-        return { status: upstreamRes.status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: errText.slice(0, 500) }) };
+        res.writeHead(upstreamRes.status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: errText.slice(0, 500) })); return;
       }
 
-      // 流式：返回 ReadableStream 供调用方 pipe
-      return {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
-        body: upstreamRes.body!,  // 直接透传上游流
-      };
+      // 流式：streamResponse 转换格式后写入 Node response
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+
+      // 创建 WritableStream 桥接到 Node res
+      const writable = new WritableStream({
+        write(chunk: Uint8Array) {
+          res.write(Buffer.from(chunk));
+        },
+        close() {
+          res.end();
+        },
+        abort(err: any) {
+          res.end();
+        },
+      });
+      const writer = writable.getWriter();
+      await streamResponse(upstreamRes, writer).catch((e: any) => {
+        console.error(`[Codex] streamResponse error: ${e?.message || e}`);
+      }).finally(() => {
+        try { writer.close(); } catch {}
+      });
+      return;
     }
 
-    return { status: 404, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'not found' }) };
+    res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'not found' })); return;
   } catch (e: any) {
     console.error(`[Codex] 💥 unhandled: ${e.message}`);
-    return { status: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'internal error' }) };
+    res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'internal error' })); return;
   }
 }
 

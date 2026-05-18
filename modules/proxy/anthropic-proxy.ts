@@ -132,7 +132,7 @@ export function loadSessionConfig(customPath?: string): { activeModel: string; m
       modelAliases: cfg.modelAliases || defaultAliases,
     };
   } catch (e: any) {
-    console.error(`[Proxy] 加载会话配置失败 (${userId}): ${e.message}`);
+    console.error(`[Proxy] 加载会话配置失败 (${customPath || '_default.json'}): ${e.message}`);
     return { activeModel: defaultAliases.default, modelAliases: defaultAliases };
   }
 }
@@ -709,10 +709,6 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   const reqPath = reqUrl.pathname;
 
   // Codex 路径 → 转发到 codex handler
-  if (req.method === 'GET' && reqPath === '/health') {
-    handleCodexDispatch(req, res);
-    return;
-  }
   if (reqPath === '/v1/responses' || reqPath.startsWith('/v1/responses')) {
     handleCodexDispatch(req, res);
     return;
@@ -989,42 +985,16 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
 
 /** 将 Node req/res 桥接到 codex handler */
 async function handleCodexDispatch(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  // 收集请求体
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
   req.on('end', async () => {
     const body = Buffer.concat(chunks).toString('utf-8');
     const reqUrl = new URL(req.url || '/', 'http://localhost');
-
-    try {
-      const result = await handleCodexRequest(body, reqUrl.pathname, req.method || 'GET');
-
-      res.writeHead(result.status, result.headers);
-
-      if (result.body instanceof ReadableStream) {
-        // 流式响应：pipe 到客户端
-        const reader = result.body.getReader();
-        const pump = async () => {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) { res.end(); break; }
-            res.write(value);
-          }
-        };
-        pump().catch(() => { try { res.end(); } catch {} });
-      } else {
-        res.end(result.body);
-      }
-    } catch (e: any) {
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-      }
-      res.end(JSON.stringify({ error: e.message }));
-    }
+    await handleCodexRequest(body, reqUrl.pathname, req.method || 'GET', res);
   });
 }
-
 export function startAnthropicProxy(port = 18899): Promise<number> {
+/** 将 Node req 桥接到 codex handler（handler 直接操作 res） */
   return new Promise((resolve) => {
     server = http.createServer(handleRequest);
     server.listen(port, () => {

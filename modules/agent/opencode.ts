@@ -220,7 +220,7 @@ export class OpenCodeAgentModule {
 
       // ⑧ 统计
       const { sharedState } = await import('../proxy/anthropic-proxy');
-      const lastUsage = sharedState.lastCallUsage;
+      const lastUsage = (sharedState as any).lastCallUsage;
       if (lastUsage && (lastUsage.inputTokens > 0 || lastUsage.outputTokens > 0)) {
         const cost = calculateCost(ctx.activeModel, lastUsage.inputTokens, lastUsage.outputTokens);
         ctx.accumulateStats(session, { ...lastUsage, costUSD: cost });
