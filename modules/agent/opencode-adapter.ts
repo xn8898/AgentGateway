@@ -6,7 +6,8 @@
 //   tool_call（服务端已执行），需要客户端发 "继续" 推进直到纯文本响应。
 // ================================================================
 
-import type { AgentAdapter, AgentInput, AgentOutput, buildAttachmentHint } from '../core/types';
+import type { AgentAdapter, AgentInput, AgentOutput } from '../core/types';
+import { buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
 import { getDataDir } from '../utils/paths';
 

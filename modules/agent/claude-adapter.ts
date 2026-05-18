@@ -7,7 +7,8 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentAdapter, AgentInput, AgentOutput, Session, buildAttachmentHint } from '../core/types';
+import type { AgentAdapter, AgentInput, AgentOutput, Session } from '../core/types';
+import { buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
 
 // ================================================================

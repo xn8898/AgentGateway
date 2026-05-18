@@ -176,21 +176,35 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
     }
 
     // 普通消息
-    let content: string;
+    let content: string | any[];
     let embeddedToolCalls: ToolCall[] | undefined;
     if (typeof msg.content === 'string') {
       content = msg.content;
     } else if (Array.isArray(msg.content)) {
       const textParts: string[] = [];
       const calls: ToolCall[] = [];
+
       for (const b of msg.content) {
         if (b.type === 'function_call') {
           calls.push({ id: b.call_id || '', type: 'function', function: { name: b.name || '', arguments: b.arguments || '{}' } });
+        } else if (b.type === 'input_image') {
+          // DeepSeek V4 不支持图片输入，降级为文本提示
+          const mime = b.media_type || b.mime_type || 'image/png';
+          textParts.push(`[图片已接收 (${mime})，当前模型不支持直接查看图片内容]`);
+        } else if (b.type === 'input_file') {
+          // DeepSeek V4 不支持文件输入，提取可用文本或降级提示
+          if (b.text || b.content) {
+            textParts.push(b.text || b.content || '');
+          } else {
+            const name = b.filename || b.file_name || '未知文件';
+            textParts.push(`[文件已接收: ${name}，当前模型不支持直接读取文件内容]`);
+          }
         } else {
           const t = b.text || b.input_text || b.output_text || '';
           if (t) textParts.push(t);
         }
       }
+
       content = textParts.join('');
       if (calls.length > 0) embeddedToolCalls = calls;
     } else {

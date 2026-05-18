@@ -7,7 +7,8 @@
 //   2. CLI 子进程（fallback）：codex exec/resume
 // ================================================================
 
-import type { AgentAdapter, AgentInput, AgentOutput, Session, buildAttachmentHint } from '../core/types';
+import type { AgentAdapter, AgentInput, AgentOutput, Session } from '../core/types';
+import { buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
 import { getAppServerManager, type AgentEvent } from './codex-exec-server';
 
