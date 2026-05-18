@@ -8,8 +8,8 @@ import type { UnifiedBlock } from '../capabilities';
 import type { MessageAttachment } from '../core/types';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { getDataDir } from '../utils/paths';
+import { FeishuInboundAdapter, MediaStore, InboundMediaResolver, InboundMediaAdapter } from '../media';
 
 export interface FeishuConfig {
   appId: string;
@@ -52,6 +52,11 @@ export class FeishuIMModule {
   private _tenantAccessToken: TokenEntry | null = null;
   private _appAccessToken: TokenEntry | null = null;
 
+  // Inbound Media — 适配器 + 抽象层
+  private _inboundAdapter: InboundMediaAdapter;
+  private _mediaStore: MediaStore;
+  private _mediaResolver: InboundMediaResolver;
+
   constructor(cfg: FeishuConfig) {
     this.appId = cfg.appId;
     this.appSecret = cfg.appSecret;
@@ -60,6 +65,11 @@ export class FeishuIMModule {
       appSecret: cfg.appSecret,
       loggerLevel: Lark.LoggerLevel.info,
     });
+
+    // 初始化 Inbound Media 层（适配器 + 存储 + 解析器）
+    this._inboundAdapter = new FeishuInboundAdapter({ appId: cfg.appId, appSecret: cfg.appSecret });
+    this._mediaStore = new MediaStore();
+    this._mediaResolver = new InboundMediaResolver(this._inboundAdapter, this._mediaStore);
   }
 
   // ================================================================
@@ -484,9 +494,13 @@ ${b.content || ''}`;
 
           case 'image': {
             const content = JSON.parse(message.content || '{}');
-            const localPath = await this.downloadMessageResource(message.message_id, content.image_key, 'image');
-            if (localPath) {
-              attachments.push({ type: 'image', localPath, sourceKey: content.image_key, mimeType: 'image/webp' });
+            const resolved = await this._mediaResolver.resolveOne({
+              messageId: message.message_id,
+              resourceKey: content.image_key,
+              type: 'image',
+            });
+            if (resolved) {
+              attachments.push(resolved.attachment);
               text = '[用户发送了一张图片]';
             }
             break;
@@ -494,9 +508,14 @@ ${b.content || ''}`;
 
           case 'file': {
             const content = JSON.parse(message.content || '{}');
-            const localPath = await this.downloadMessageResource(message.message_id, content.file_key, 'file');
-            if (localPath) {
-              attachments.push({ type: 'file', localPath, filename: content.file_name || 'unknown', sourceKey: content.file_key });
+            const resolved = await this._mediaResolver.resolveOne({
+              messageId: message.message_id,
+              resourceKey: content.file_key,
+              type: 'file',
+              fileName: content.file_name,
+            });
+            if (resolved) {
+              attachments.push(resolved.attachment);
               text = `[用户发送了文件: ${content.file_name || 'unknown'}]`;
             }
             break;
@@ -504,9 +523,15 @@ ${b.content || ''}`;
 
           case 'audio': {
             const content = JSON.parse(message.content || '{}');
-            const localPath = await this.downloadMessageResource(message.message_id, content.file_key, 'file');
-            if (localPath) {
-              attachments.push({ type: 'audio', localPath, sourceKey: content.file_key, durationMs: content.duration });
+            const resolved = await this._mediaResolver.resolveOne({
+              messageId: message.message_id,
+              resourceKey: content.file_key,
+              type: 'file',  // 飞书音频也用 file 类型下载
+            });
+            if (resolved) {
+              // 补充音频时长（resolver 无法从飞书 API 获取 duration）
+              resolved.attachment.durationMs = content.duration;
+              attachments.push(resolved.attachment);
               text = `[用户发送了语音消息 (${(content.duration || 0) / 1000}秒)]`;
             }
             break;
@@ -656,50 +681,6 @@ ${b.content || ''}`;
   }
 
   // ================================================================
-  // 消息附件接收（新增）
-  // ================================================================
-
-  /**
-   * 下载飞书消息中的附件到本地临时目录
-   * API: GET /open-apis/im/v1/messages/{message_id}/resources/{file_key}?type={type}
-   */
-  private async downloadMessageResource(
-    messageId: string,
-    fileKey: string,
-    type: 'image' | 'file'
-  ): Promise<string | null> {
-    try {
-      const token = await this.getAppToken();
-      const url = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=${type}`;
-      const resp = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!resp.ok) {
-        console.error(`[Feishu] 下载消息资源失败: HTTP ${resp.status}`);
-        return null;
-      }
-
-      const buffer = Buffer.from(await resp.arrayBuffer());
-      const ext = type === 'image' ? '.webp' : '';
-      const prefix = type === 'image' ? 'feishu-img-' : 'feishu-file-';
-      const tmpPath = path.join(
-        os.tmpdir(),
-        `${prefix}${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`
-      );
-      fs.writeFileSync(tmpPath, buffer);
-      console.log(`[Feishu] 消息资源已下载: ${tmpPath} (${buffer.length} bytes)`);
-      return tmpPath;
-    } catch (e: any) {
-      console.error(`[Feishu] 下载消息资源异常: ${e.message}`);
-      return null;
-    }
-  }
-
-  /**
-   * 解析飞书富文本帖子（post）为 markdown
-   * content 结构：{ zh_cn: { title, content: [[{tag, text, ...}]] } }
-   */
   private parsePostContent(content: string): string {
     try {
       const parsed = JSON.parse(content);

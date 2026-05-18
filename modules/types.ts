@@ -81,7 +81,7 @@ export interface AgentModule {
 // ================================================================
 
 /** IM 模块提供给 Bot 的消息回调 */
-export type MessageHandler = (chatId: string, text: string, userId: string) => Promise<void>;
+export type MessageHandler = (chatId: string, text: string, userId: string, attachments?: import('./core/types').MessageAttachment[]) => Promise<void>;
 
 /** IM 模块声明的输出能力 */
 export interface IMCapabilities {

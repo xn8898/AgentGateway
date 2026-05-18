@@ -7,12 +7,83 @@
 
 import type { IMModule, IMCapabilities, MessageHandler } from '../types';
 import type { UnifiedBlock } from '../capabilities';
+import type { MessageAttachment } from '../core/types';
+import { TelegramInboundAdapter, MediaStore, InboundMediaResolver } from '../media';
 
 export interface TelegramConfig {
   /** Bot Token（从 @BotFather 获取） */
   token: string;
   /** HTTP 代理地址（直连被墙时使用，如 http://127.0.0.1:7890） */
   proxy?: string;
+}
+
+// ================================================================
+// Telegram 消息类型（长轮询 getUpdates 返回的 message 结构）
+// ================================================================
+
+interface TelegramPhoto {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  width: number;
+  height: number;
+}
+
+interface TelegramFile {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  file_name?: string;
+  mime_type?: string;
+}
+
+interface TelegramAudio {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  duration: number;
+  mime_type?: string;
+  file_name?: string;
+}
+
+interface TelegramVoice {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  duration: number;
+  mime_type?: string;
+}
+
+interface TelegramVideo {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  width: number;
+  height: number;
+  duration: number;
+  mime_type?: string;
+  file_name?: string;
+}
+
+interface TelegramMessage {
+  message_id: number;
+  date: number;
+  chat: { id: number; type: string; title?: string; username?: string };
+  from?: { id: number; is_bot: boolean; first_name: string; username?: string };
+  text?: string;
+  caption?: string;
+  photo?: TelegramPhoto[];       // 照片数组（按尺寸排列，取最后一个最大）
+  document?: TelegramFile;
+  audio?: TelegramAudio;
+  voice?: TelegramVoice;
+  video?: TelegramVideo;
+  sticker?: TelegramFile;
+}
+
+interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+  edited_message?: TelegramMessage;
 }
 
 export class TelegramAdapter implements IMModule {
@@ -23,6 +94,13 @@ export class TelegramAdapter implements IMModule {
   private running = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private lastUpdateId = 0;
+
+  // ================================================================
+  // Inbound Media — 适配器 + 抽象层
+  // ================================================================
+  private _inboundAdapter: TelegramInboundAdapter | null = null;
+  private _mediaStore: MediaStore | null = null;
+  private _mediaResolver: InboundMediaResolver | null = null;
 
   // ================================================================
   // 熔断 + 指数退避：网络受限时避免刷屏和拖垮进程
@@ -41,18 +119,54 @@ export class TelegramAdapter implements IMModule {
     this.proxy = cfg.proxy;
     this.apiUrl = `https://api.telegram.org/bot${this.token}`;
 
-    // 注意：不再设置全局 HTTPS_PROXY 环境变量，避免影响进程内其他 HTTP 请求
-    // 代理仅在 Telegram 自身的 fetch 调用中局部使用
     if (cfg.proxy) {
       console.log(`[Telegram] 已配置代理: ${cfg.proxy}（局部使用，不影响其他模块）`);
     }
   }
 
-  /** 代理感知的 fetch（局部使用代理，不影响全局） */
+  // ================================================================
+  // 入站媒体层初始化（延迟创建，需要 token）
+  // ================================================================
+
+  private ensureMediaResolver(): InboundMediaResolver {
+    if (!this._mediaResolver) {
+      this._inboundAdapter = new TelegramInboundAdapter({
+        token: this.token,
+        // Share parent's proxy-aware fetch to avoid duplicating proxy logic
+        fetchFn: (url, init) => this._fetch(url, init),
+      });
+      this._mediaStore = new MediaStore();
+      this._mediaResolver = new InboundMediaResolver(this._inboundAdapter, this._mediaStore);
+    }
+    return this._mediaResolver;
+  }
+
+  // ================================================================
+  // 代理感知的 fetch
+  // ================================================================
+
   private async _fetch(url: string, init?: RequestInit): Promise<Response> {
-    // 若有代理配置，在 fetch dispatcher 中局部指定
+    // Node.js 原生 fetch 不支持 proxy 选项
+    // 如果有代理配置，使用环境变量或 dispatcher（undici/Bun）
     if (this.proxy) {
-      return fetch(url, { ...init, proxy: this.proxy });
+      try {
+        // Bun 原生支持 proxy 选项
+        if ((globalThis as any).Bun) {
+          return fetch(url, { ...init, proxy: this.proxy } as any);
+        }
+        // Node.js: 尝试使用 undici 的 ProxyAgent
+        const { ProxyAgent } = await import('undici');
+        if (ProxyAgent) {
+          const dispatcher = new ProxyAgent(this.proxy);
+          return fetch(url, { ...init, dispatcher } as any);
+        }
+      } catch (e: any) {
+        // 降级：设置环境变量（影响全局，但总比没有好）
+        if (!process.env.HTTPS_PROXY && !process.env.https_proxy) {
+          process.env.HTTPS_PROXY = this.proxy;
+          console.log(`[Telegram] 已设置 HTTPS_PROXY=${this.proxy}`);
+        }
+      }
     }
     return fetch(url, init);
   }
@@ -91,6 +205,10 @@ export class TelegramAdapter implements IMModule {
     console.log('[Telegram] 已停止');
   }
 
+  // ================================================================
+  // 长轮询
+  // ================================================================
+
   private async _poll(): Promise<void> {
     if (!this.running) return;
 
@@ -102,17 +220,20 @@ export class TelegramAdapter implements IMModule {
       const data = await res.json();
 
       if (data.ok && data.result) {
-        for (const update of data.result) {
+        for (const update of data.result as TelegramUpdate[]) {
           this.lastUpdateId = update.update_id;
           const msg = update.message || update.edited_message;
-          if (!msg || !msg.text) continue;
+          if (!msg) continue;
+
+          // 解析消息文本和媒体附件
+          const { text, attachments } = await this._parseMessage(msg);
+          if (!text && attachments.length === 0) continue;
 
           const chatId = String(msg.chat.id);
-          const userId = String(msg.from?.id || chatId);
-          const text = msg.text.trim();
+          const userId = String(msg.from?.id || msg.chat.id);
 
           if (this.handler) {
-            this.handler(chatId, text, userId).catch(e =>
+            this.handler(chatId, text, userId, attachments.length > 0 ? attachments : undefined).catch(e =>
               console.error('[Telegram] 消息处理异常:', e.message)
             );
           }
@@ -134,6 +255,118 @@ export class TelegramAdapter implements IMModule {
 
     this.pollTimer = setTimeout(() => this._poll(), this.backoffMs);
   }
+
+  // ================================================================
+  // 解析 Telegram 消息 — 提取文本 + 媒体附件
+  // ================================================================
+
+  private async _parseMessage(msg: TelegramMessage): Promise<{ text: string; attachments: MessageAttachment[] }> {
+    const attachments: MessageAttachment[] = [];
+    let text = msg.text || '';
+
+    // 收集所有媒体字段
+    const mediaItems: Array<{ fileId: string; type: 'image' | 'file' | 'media'; fileName?: string }> = [];
+
+    // 照片（取最大尺寸）
+    if (msg.photo && msg.photo.length > 0) {
+      const largest = msg.photo[msg.photo.length - 1];
+      mediaItems.push({ fileId: largest.file_id, type: 'image' });
+    }
+
+    // 文档/文件
+    if (msg.document) {
+      mediaItems.push({
+        fileId: msg.document.file_id,
+        type: 'file',
+        fileName: msg.document.file_name,
+      });
+    }
+
+    // 音频
+    if (msg.audio) {
+      mediaItems.push({
+        fileId: msg.audio.file_id,
+        type: 'media',
+        fileName: msg.audio.file_name,
+      });
+    }
+
+    // 语音
+    if (msg.voice) {
+      mediaItems.push({
+        fileId: msg.voice.file_id,
+        type: 'media',
+        fileName: 'voice.ogg',
+      });
+    }
+
+    // 视频
+    if (msg.video) {
+      mediaItems.push({
+        fileId: msg.video.file_id,
+        type: 'media',
+        fileName: msg.video.file_name || 'video.mp4',
+      });
+    }
+
+    // 贴纸
+    if (msg.sticker) {
+      mediaItems.push({
+        fileId: msg.sticker.file_id,
+        type: 'image',
+        fileName: 'sticker.webp',
+      });
+    }
+
+    // 下载媒体附件
+    if (mediaItems.length > 0) {
+      try {
+        const resolver = this.ensureMediaResolver();
+        const requests = mediaItems.map(item => ({
+          messageId: String(msg.message_id),
+          resourceKey: item.fileId,
+          type: item.type,
+          fileName: item.fileName,
+        }));
+
+        const result = await resolver.resolveAll(requests);
+        attachments.push(...result.attachments);
+
+        // 补充 Telegram 特有的字段
+        if (msg.audio) {
+          const audioAtt = attachments.find(a => a.type === 'audio');
+          if (audioAtt) audioAtt.durationMs = msg.audio.duration * 1000;
+        }
+        if (msg.voice) {
+          const voiceAtt = attachments.find(a => a.type === 'audio');
+          if (voiceAtt) voiceAtt.durationMs = msg.voice.duration * 1000;
+        }
+      } catch (e: any) {
+        console.error('[Telegram] 媒体解析失败:', e.message);
+      }
+    }
+
+    // 如果媒体有 caption，拼接到文本
+    if (msg.caption) {
+      text = text ? `${text}\n${msg.caption}` : msg.caption;
+    }
+
+    // 纯媒体消息（无文本无caption），生成占位文本
+    if (!text && attachments.length > 0) {
+      const types = attachments.map(a => {
+        if (a.type === 'image') return '图片';
+        if (a.type === 'audio') return '语音';
+        return '文件';
+      });
+      text = `[用户发送了${types.join('、')}]`;
+    }
+
+    return { text: text.trim(), attachments };
+  }
+
+  // ================================================================
+  // 熔断/退避
+  // ================================================================
 
   /** 成功后重置所有状态 */
   private _onSuccess(): void {

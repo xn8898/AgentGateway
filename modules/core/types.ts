@@ -73,6 +73,8 @@ export interface MessageAttachment {
   mimeType?: string;
   /** 语音时长（毫秒） */
   durationMs?: number;
+  /** 预计算的 Agent 提示文本（由 MediaResolver 按文件类型生成，优先级高于 buildAttachmentHint 自动生成的） */
+  hint?: string;
 }
 
 /** 构建附件提示文本，注入到 Agent 输入消息中 */
@@ -82,17 +84,22 @@ export function buildAttachmentHint(attachments: MessageAttachment[]): string {
     const typeLabel = att.type === 'image' ? '图片' : att.type === 'audio' ? '语音' : '文件';
     const detail = att.filename ? ` (${att.filename})` : '';
     const dur = att.durationMs ? ` [时长: ${Math.round(att.durationMs / 1000)}秒]` : '';
+    const mimeInfo = att.mimeType ? ` [${att.mimeType}]` : '';
 
-    let hint = '';
-    if (att.type === 'image') {
-      hint = `\n> 💡 图片查看方式：使用 \`view_image\` 工具，传参 \`path="${att.localPath}"\``;
+    // 优先使用预计算的提示（由 MediaResolver 按文件类型生成）
+    let hint: string;
+    if (att.hint) {
+      hint = `\n> 💡 ${att.hint}`;
+    } else if (att.type === 'image') {
+      hint = `\n> 💡 图片已保存到本地，路径: \`${att.localPath}\`，格式: ${att.mimeType || '未知'}，可使用查看图片工具读取`;
     } else if (att.type === 'audio') {
-      hint = `\n> 💡 语音文件路径：\`${att.localPath}\`，可用语音识别工具处理`;
+      hint = `\n> 💡 语音文件路径: \`${att.localPath}\`，可用语音识别工具处理`;
     } else {
-      hint = `\n> 💡 文件路径：\`${att.localPath}\`，可直接读取内容`;
+      const ext = att.filename ? `，扩展名: ${att.filename.split('.').pop()}` : '';
+      hint = `\n> 💡 文件路径: \`${att.localPath}\`，可直接读取内容${ext}`;
     }
 
-    return `${icon} [用户消息附带${typeLabel} #${i + 1}]${detail}${dur}${hint}`;
+    return `${icon} [用户消息附带${typeLabel} #${i + 1}]${detail}${mimeInfo}${dur}${hint}`;
   }).join('\n\n');
 }
 

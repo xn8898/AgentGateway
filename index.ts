@@ -32,6 +32,33 @@ import { resolveCapabilities } from './modules/prompt-builder';
 import { FeishuIMModule } from './modules/im/feishu';
 import { TelegramAdapter } from './modules/im/telegram';
 import type { IMModule } from './modules/types';
+
+// ================================================================
+// IM 注册表 — 新增 IM 只需加一行注册，不改 Bot 构造函数
+// ================================================================
+interface IMFactory {
+  create(cfg: BotConfig): IMModule;
+}
+
+const IM_REGISTRY = new Map<string, IMFactory>();
+
+function registerIM(type: string, factory: IMFactory) {
+  IM_REGISTRY.set(type, factory);
+}
+
+// 注册飞书
+registerIM('feishu', {
+  create(cfg: BotConfig) {
+    return new FeishuIMModule({ appId: cfg.appId, appSecret: cfg.appSecret });
+  },
+});
+
+// 注册 Telegram
+registerIM('telegram', {
+  create(cfg: BotConfig) {
+    return new TelegramAdapter({ token: cfg.appId, proxy: (cfg as any).proxy });
+  },
+});
 import { startAnthropicProxy, stopAnthropicProxy } from './modules/proxy/anthropic-proxy';
 import { getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/proxy/codex-proxy';
 import { initOpenCodeConfig } from './modules/agent/opencode';
@@ -300,16 +327,12 @@ class Bot {
       });
     }
 
-    switch (imType) {
-      case 'feishu':
-        this.im = new FeishuIMModule({ appId: this.appId, appSecret: this.appSecret });
-        break;
-      case 'telegram':
-        this.im = new TelegramAdapter({ token: this.appId, proxy: cfg.proxy });
-        break;
-      default:
-        throw new Error(`不支持的 IM 类型: ${imType}`);
+    const imFactory = IM_REGISTRY.get(imType);
+    if (!imFactory) {
+      const known = [...IM_REGISTRY.keys()].join(', ');
+      throw new Error(`不支持的 IM 类型: ${imType}（已注册: ${known}）`);
     }
+    this.im = imFactory.create(cfg);
 
     // ===== SDK 集成 =====
     this.sessionManager = new CustomSessionManager(this.name, this.sessions);
@@ -708,7 +731,7 @@ class Bot {
 // ===== 系统提示词构建（不依赖 prompt-builder 的旧接口） =====
 import { buildSystemPrompt } from './modules/prompt-builder';
 
-function buildSystemPromptWithSoul(soul: string, botName: string, imModule: FeishuIMModule | null): string {
+function buildSystemPromptWithSoul(soul: string, botName: string, imModule: IMModule | null): string {
   const base = buildSystemPrompt({ imModule, botName });
   return soul ? `${base}\n\n${soul}` : base;
 }
