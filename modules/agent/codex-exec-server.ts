@@ -93,7 +93,7 @@ export class CodexAppServerClient {
 
   async initialize(): Promise<void> {
     await this._sendRequest('initialize', {
-      clientInfo: { name: 'cc-gateway', version: '1.0' },
+      clientInfo: { name: 'imtoagent', version: '1.0' },
     });
     console.log(`[app-server] initialized chat=${this.chatId.slice(-8)}`);
   }
@@ -102,7 +102,7 @@ export class CodexAppServerClient {
     const result: any = await this._sendRequest('thread/start', {
       cwd,
       model: 'gpt-5.5',
-      modelProvider: 'ccgateway',
+      modelProvider: 'imtoagent',
       sandbox: 'danger-full-access',
       approvalPolicy: 'never',
     });
@@ -311,7 +311,7 @@ class CodexAppServerManager {
     this.process = Bun.spawn(
       ['codex', 'app-server',
         '--listen', 'stdio://',
-        '-c', 'model_provider=ccgateway',
+        '-c', 'model_provider=imtoagent',
         '-c', 'sandbox.mode=danger-full-access',
         '--enable', 'memories',
       ],

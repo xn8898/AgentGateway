@@ -33,11 +33,11 @@ export const DEFAULT_TERMINAL_CAPS: IMCapabilities = {
 // ================================================================
 // Soul 加载
 // ================================================================
-// 从 ~/Desktop/cc-gateway/soul/{botName}/ 按顺序加载
+// 从 ~/Desktop/imtoagent/soul/{botName}/ 按顺序加载
 // 加载顺序：rules → identity → profile → workspace → skills
 // ================================================================
 export function loadSoul(botName: string): string {
-  const soulDir = `${process.env.HOME}/Desktop/cc-gateway/soul/${botName}`;
+  const soulDir = `${process.env.HOME}/Desktop/imtoagent/soul/${botName}`;
   const soulOrder = ['rules.md', 'identity.md', 'profile.md', 'workspace.md', 'skills.md'];
   const parts: string[] = [];
   try {
@@ -92,7 +92,7 @@ export function buildSystemPrompt(ctx: PromptBuilderContext): string {
   // 3. Soul
   const soul = loadSoul(ctx.botName);
   if (soul) {
-    sections.push('# 用户自定义指令 (CC Gateway Soul)\n\n' + soul);
+    sections.push('# 用户自定义指令 (IMtoAgent Soul)\n\n' + soul);
   }
 
   return sections.join('\n\n---\n\n');

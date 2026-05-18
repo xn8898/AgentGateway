@@ -1,6 +1,6 @@
 #!/bin/bash
-# CC Gateway 看门狗 — 崩溃后自动重启
-CC_DIR="$HOME/Desktop/cc-gateway"
+# IMtoAgent 看门狗 — 崩溃后自动重启
+CC_DIR="$HOME/Desktop/imtoagent"
 LOG="$CC_DIR/watchdog.log"
 SAFE_BACKUP="$CC_DIR/index.ts.safe"
 
@@ -23,7 +23,7 @@ while true; do
   done
   sleep 1
 
-  log "[START] 启动 CC Gateway..."
+  log "[START] 启动 IMtoAgent..."
   cd "$CC_DIR"
   bun run index.ts >> "$LOG" 2>&1 &
   PID=$!

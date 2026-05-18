@@ -1,5 +1,5 @@
 // Codex Agent 模块
-// 对接 Codex CLI，通过 :18900 Proxy 调用 Provider
+// 对接 Codex CLI，通过 :18899 Proxy 调用 Provider
 
 import { getProxyUsage, resetProxyUsage } from '../proxy/codex-proxy';
 import { calculateCost } from '../proxy/anthropic-proxy';
@@ -59,7 +59,7 @@ async function spawnCodexExec(
   onTool?: (name: string, args: Record<string, any>) => void
 ): Promise<{ threadId: string; response: string }> {
   console.error(`[Codex] spawnExec cwd=${cwd} prompt_len=${prompt.length}`);
-  const child = Bun.spawn(['codex', 'exec', '-p', 'ccgateway', '-s', 'danger-full-access',
+  const child = Bun.spawn(['codex', 'exec', '-p', 'imtoagent', '-s', 'danger-full-access',
     '--skip-git-repo-check', '--json', prompt], {
     cwd, stdout: 'pipe', stderr: 'pipe',
   });
@@ -90,7 +90,7 @@ async function spawnCodexResume(
 ): Promise<{ response: string }> {
   console.error(`[Codex] spawnResume cwd=${cwd} threadId=${threadId.slice(-8)} prompt_len=${prompt.length}`);
   const child = Bun.spawn(['codex', 'exec', 'resume', threadId,
-    '--dangerously-bypass-approvals-and-sandbox', '-c', 'model_provider=ccgateway', '-c', 'model=gpt-5.5', '--json', '--skip-git-repo-check', prompt], {
+    '--dangerously-bypass-approvals-and-sandbox', '-c', 'model_provider=imtoagent', '-c', 'model=gpt-5.5', '--json', '--skip-git-repo-check', prompt], {
     cwd, stdout: 'pipe', stderr: 'pipe',
   });
 

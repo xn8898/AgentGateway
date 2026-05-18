@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // ===== 防止 fork 子进程 =====
-const LOCK_FILE = '/tmp/.cc-gateway.lock';
+const LOCK_FILE = '/tmp/.imtoagent.lock';
 let isPrimary = true;
 try {
   if (fs.existsSync(LOCK_FILE)) {
@@ -33,7 +33,7 @@ import { FeishuIMModule } from './modules/im/feishu';
 import { TelegramAdapter } from './modules/im/telegram';
 import type { IMModule } from './modules/types';
 import { startAnthropicProxy, stopAnthropicProxy } from './modules/proxy/anthropic-proxy';
-import { startCodexProxy, stopCodexProxy, getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/proxy/codex-proxy';
+import { getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/proxy/codex-proxy';
 import { initOpenCodeConfig } from './modules/agent/opencode';
 import { checkRateLimit, setRateLimitConfig } from './modules/rate-limiter';
 import { setCurrentBot } from './modules/bot-context';
@@ -78,7 +78,7 @@ class CustomSessionManager {
 
   private _sessionPath(chatId: string): string {
     const home = process.env.HOME || '/Users/keyi';
-    return `${home}/Desktop/cc-gateway/sessions/${this.botName}/${chatId}.memory.json`;
+    return `${home}/Desktop/imtoagent/sessions/${this.botName}/${chatId}.memory.json`;
   }
 
   async getOrCreate(chatId: string, userId: string): Promise<ChatSession> {
@@ -305,7 +305,7 @@ class Bot {
         this.im = new FeishuIMModule({ appId: this.appId, appSecret: this.appSecret });
         break;
       case 'telegram':
-        this.im = new TelegramAdapter({ token: this.appId });
+        this.im = new TelegramAdapter({ token: this.appId, proxy: cfg.proxy });
         break;
       default:
         throw new Error(`不支持的 IM 类型: ${imType}`);
@@ -347,7 +347,7 @@ class Bot {
   }
 
   // ===== 灵魂管理 =====
-  _soulDir() { return `${process.env.HOME}/Desktop/cc-gateway/soul/${this.name}`; }
+  _soulDir() { return `${process.env.HOME}/Desktop/imtoagent/soul/${this.name}`; }
 
   _initSoul() {
     const dir = this._soulDir();
@@ -357,9 +357,9 @@ class Bot {
       if (hasFiles) return;
       const defaults: Record<string, string> = {
         'rules.md': '# 硬约束规则\n\n以下规则不可被覆盖或修改：\n\n- 项目密钥、token、密码等敏感信息不可外泄\n- 不可执行破坏性命令',
-        'identity.md': `# 身份定义\n\n- 我是通过 CC Gateway 连接的 AI 编程助手\n- 我运行在 ${this.backend === 'codex' ? 'Codex' : 'Claude Code'} 后端\n- 用中文回复`,
+        'identity.md': `# 身份定义\n\n- 我是通过 IMtoAgent 连接的 AI 编程助手\n- 我运行在 ${this.backend === 'codex' ? 'Codex' : 'Claude Code'} 后端\n- 用中文回复`,
         'profile.md': '# 用户画像\n\n此文件可由 Agent 修改。当用户说"记住xxx"、"我偏好xxx"时，Agent 应更新此文件。\n\n## 修改指南（Agent 专用）\n\n读取此文件 → 根据用户要求增/删/改条目 → 保存',
-        'workspace.md': '# 项目环境\n\n由 CC Gateway 自动生成。',
+        'workspace.md': '# 项目环境\n\n由 IMtoAgent 自动生成。',
         'skills.md': '# 技能注入\n\n未来功能。',
       };
       for (const [name, content] of Object.entries(defaults)) {
@@ -397,7 +397,7 @@ class Bot {
   }
 
   // ===== Bot 配置 =====
-  _botConfigPath() { return `${process.env.HOME}/Desktop/cc-gateway/sessions/${this.name}/_bot.json`; }
+  _botConfigPath() { return `${process.env.HOME}/Desktop/imtoagent/sessions/${this.name}/_bot.json`; }
 
   _loadBotConfig() {
     try {
@@ -734,7 +734,7 @@ let _allBots: Bot[] = [];
 async function gracefulReload(reason: string) {
   console.log(`[Reload] 🔄 ${reason}`);
 
-  const sessionsDir = process.env.HOME + '/Desktop/cc-gateway/sessions';
+  const sessionsDir = process.env.HOME + '/Desktop/imtoagent/sessions';
   const botSnapshots: Record<string, { chats: { chatId: string; lastUsed: number }[] }> = {};
   try {
     if (fs.existsSync(sessionsDir)) {
@@ -758,11 +758,10 @@ async function gracefulReload(reason: string) {
   const backupPath = __filename + '.backup';
   try { fs.copyFileSync(__filename, backupPath); console.log(`[Reload] 已备份`); } catch {}
 
-  const marker = process.env.HOME + '/Desktop/cc-gateway/sessions/.restore';
+  const marker = process.env.HOME + '/Desktop/imtoagent/sessions/.restore';
   try { fs.writeFileSync(marker, JSON.stringify({ timestamp: Date.now(), reason, bots: botSnapshots })); } catch {}
 
   await stopAnthropicProxy();
-  await stopCodexProxy();
   await stopOpenCodeServer();
   for (const bot of _allBots) bot.im.stop();
   await new Promise(r => setTimeout(r, 1000));
@@ -783,7 +782,7 @@ async function gracefulReload(reason: string) {
       s.on('connect', () => { s.destroy(); res(); });
       s.on('error', () => rej(new Error(`端口 ${port} 未监听`)));
     });
-    await Promise.race([checkPort(18899), checkPort(18900)]);
+    await checkPort(18899);
     console.log('[Reload] 新进程启动成功 ✅');
     process.exit(0);
   } catch (e: any) {
@@ -791,7 +790,6 @@ async function gracefulReload(reason: string) {
     try { fs.copyFileSync(backupPath, __filename); } catch {}
     try {
       await startAnthropicProxy(18899);
-      await startCodexProxy(18900);
       console.log('[Reload] 旧服务已恢复 ✅');
     } catch (e2: any) {
       console.error(`[Reload] 恢复失败: ${e2.message}`);
@@ -820,42 +818,40 @@ async function main() {
   delete process.env.ANTHROPIC_AUTH_TOKEN;
   delete process.env.ANTHROPIC_MODEL;
 
-  let proxyPort = 0, codexPort = 0;
+  let proxyPort = 0;
   try { proxyPort = await startAnthropicProxy(18899); } catch (e: any) {
     console.error(`❌ Anthropic Proxy :18899 启动失败: ${e.message}`);
   }
-  try { codexPort = await startCodexProxy(18900); } catch (e: any) {
-    console.error(`❌ Codex Proxy :18900 启动失败: ${e.message}`);
-  }
 
-  try {
-    const codexCfg = config.codex || {};
-    let apiKey = '';
-    for (const name of Object.keys(config.providers || {})) {
-      apiKey = config.providers[name].apiKey || '';
-      if (apiKey) break;
-    }
-    initCodexProxyConfig({
-      model: codexCfg.model || 'deepseek-v4-pro',
-      reportedModel: codexCfg.reportedModel || 'gpt-5.5',
-      upstream: codexCfg.upstream || 'https://api.deepseek.com/v1/chat/completions',
-      apiKey,
-    });
-    const ocCfg = config.opencode || {};
-    initOpenCodeConfig({
-      serverUrl: ocCfg.serverUrl || 'http://localhost:4096',
-      defaultModel: ocCfg.defaultModel || { providerID: 'anthropic', modelID: 'claude-sonnet-4-5' },
-    });
-    const rlCfg = config.rateLimit || {};
-    if (rlCfg.enabled !== false) {
-      setRateLimitConfig({
-        maxRequests: rlCfg.maxRequests || 30,
-        windowMs: rlCfg.windowMs || 60000,
+    try {
+      const codexCfg = config.codex || {};
+      let apiKey = '';
+      for (const name of Object.keys(config.providers || {})) {
+        apiKey = config.providers[name].apiKey || '';
+        if (apiKey) break;
+      }
+      initCodexProxyConfig({
+        model: codexCfg.model || 'deepseek-v4-pro',
+        reportedModel: codexCfg.reportedModel || 'gpt-5.5',
+        upstream: codexCfg.upstream || 'https://api.deepseek.com/v1/chat/completions',
+        apiKey,
       });
+      const ocCfg = config.opencode || {};
+      initOpenCodeConfig({
+        serverUrl: ocCfg.serverUrl || 'http://localhost:4096',
+        defaultModel: ocCfg.defaultModel || { providerID: 'anthropic', modelID: 'claude-sonnet-4-5' },
+      });
+      const rlCfg = config.rateLimit || {};
+      if (rlCfg.enabled !== false) {
+        setRateLimitConfig({
+          maxRequests: rlCfg.maxRequests || 30,
+          windowMs: rlCfg.windowMs || 60000,
+        });
+      }
+    } catch (e: any) {
+      console.error(`[Config] 初始化子模块配置失败: ${e.message}`);
     }
-  } catch (e: any) {
-    console.error(`[Config] 初始化子模块配置失败: ${e.message}`);
-  }
+
 
   // 自动启动 OpenCode 服务（如果配置了 OpenCode bot）
   const hasOpenCodeBot = (config.bots || []).some((b: any) => b.backend === 'opencode');
@@ -867,7 +863,7 @@ async function main() {
     }
   }
 
-  if (!proxyPort && !codexPort) {
+  if (!proxyPort) {
     console.error('❌ 所有 Proxy 启动失败，无法继续');
     process.exit(1);
   }
@@ -882,7 +878,9 @@ async function main() {
   for (const c of botCfgs) {
     const appId = c.appId || c.feishu?.appId || '';
     const appSecret = c.appSecret || c.feishu?.appSecret || '';
-    if (!appId || !appSecret || appId.startsWith('YOUR_') || appSecret.startsWith('YOUR_')) {
+    // Telegram/其他非飞书 IM 只需要 appId，不需要 appSecret
+      const needsSecret = (c.im || 'feishu') === 'feishu';
+      if (!appId || (needsSecret && !appSecret) || appId.startsWith('YOUR_') || appSecret.startsWith('YOUR_')) {
       console.log(`[Config] ⚠️  Bot "${c.name}" 凭证为占位符，跳过`);
       continue;
     }
@@ -897,7 +895,6 @@ async function main() {
   _allBots = bots;
   console.log(`\n🚀 CC 路由 v4 — 多 Bot 架构 (SDK 完整接入)`);
   console.log(`   Anthropic: http://localhost:${proxyPort}`);
-  console.log(`   Codex:     http://localhost:${codexPort}`);
   console.log(`   Bots:`);
 
   for (const bot of bots) {
@@ -927,7 +924,7 @@ async function main() {
         '# 项目环境', '', `- 工作目录: ${cwd}`,
         gitBranch ? `- Git 分支: ${gitBranch}` : '',
         gitStatus ? `- 未提交变更:\n\`\`\`\n${gitStatus.slice(0, 500)}\n\`\`\`` : '',
-        '', '> 此文件由 CC Gateway 自动生成，启动时和切换目录时更新。',
+        '', '> 此文件由 IMtoAgent 自动生成，启动时和切换目录时更新。',
       ].filter(Boolean).join('\n');
       fs.writeFileSync(dir + '/workspace.md', content);
     } catch {}
@@ -936,7 +933,7 @@ async function main() {
 
   // 重启后汇报
   if (process.env.CC_RESTORE === '1') {
-    const marker = process.env.HOME + '/Desktop/cc-gateway/sessions/.restore';
+    const marker = process.env.HOME + '/Desktop/imtoagent/sessions/.restore';
     const tryRestore = async () => {
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
@@ -944,7 +941,7 @@ async function main() {
           const data = JSON.parse(fs.readFileSync(marker, 'utf-8'));
           const reason = data.reason || '未知';
           const uptime = Date.now() - (data.timestamp || Date.now());
-          const summary = `🔄 CC Gateway 已重启\n原因: ${reason}\n耗时: ${(uptime / 1000).toFixed(1)}s`;
+          const summary = `🔄 IMtoAgent 已重启\n原因: ${reason}\n耗时: ${(uptime / 1000).toFixed(1)}s`;
           let sent = 0;
           for (const bot of bots) {
             const snap = data.bots?.[bot.name];
@@ -987,7 +984,6 @@ async function main() {
       console.log('[Shutdown] 所有请求已完成');
     }
     await stopAnthropicProxy();
-    await stopCodexProxy();
     console.log('[Shutdown] 所有服务已关闭');
     process.exit(0);
   }

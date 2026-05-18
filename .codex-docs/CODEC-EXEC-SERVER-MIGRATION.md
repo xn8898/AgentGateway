@@ -1,14 +1,14 @@
 # Codex Exec-Server 迁移方案
 
 > 2026-05-14 · 由 CX 基于 openai/codex app-server-protocol v2 源码分析产出
-> 目标：将 CC Gateway 对接 Codex 的方式从 `codex exec` 子进程升级为 app-server v2 WebSocket 长连接
+> 目标：将 IMtoAgent 对接 Codex 的方式从 `codex exec` 子进程升级为 app-server v2 WebSocket 长连接
 
 ---
 
 ## 一、背景与动机
 
 ### 当前状态
-- CC Gateway 通过 `Bun.spawn('codex exec ...')` 调用 Codex CLI
+- IMtoAgent 通过 `Bun.spawn('codex exec ...')` 调用 Codex CLI
 - 新会话用 `spawnCodexExec`，续接用 `spawnCodexResume(threadId)`
 - 线程内上下文保持**已正常工作**（通过 Codex CLI 的 `state_5.sqlite`）
 
@@ -29,7 +29,7 @@
 ## 二、架构概览
 
 ```
-CC Gateway (Bun)
+IMtoAgent (Bun)
   │
   ├─ codex.ts (编排层)          ← 需要修改
   │   ├─ 优先: exec-server WS   ← 新增
@@ -52,7 +52,7 @@ CC Gateway (Bun)
 
 #### initialize
 ```json
-{ "method": "initialize", "params": { "clientName": "cc-gateway", "resumeSessionId": "optional-session-id" } }
+{ "method": "initialize", "params": { "clientName": "imtoagent", "resumeSessionId": "optional-session-id" } }
 ```
 返回：`{ "session_id": "..." }`
 
@@ -63,7 +63,7 @@ CC Gateway (Bun)
   "params": {
     "cwd": "/path/to/workdir",
     "model": "gpt-5.5",
-    "modelProvider": "ccgateway",
+    "modelProvider": "imtoagent",
     "sandbox": "danger-full-access",
     "approvalPolicy": "never"
   }
@@ -142,7 +142,7 @@ codex exec-server --listen ws://127.0.0.1:18901
 wscat -c ws://127.0.0.1:18901
 
 # 发 initialize
-> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientName":"cc-gateway-test"}}
+> {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientName":"imtoagent-test"}}
 
 # 观察返回，判断：
 # - 如果返回 session_id + 后续有 thread/start 等方法 → app-server v2 ✅

@@ -2,7 +2,7 @@
 // SessionManager — 会话生命周期管理
 // ================================================================
 // 从 index.ts 和 anthropic-proxy.ts 迁移 session 逻辑
-// 路径: ~/Desktop/cc-gateway/sessions/{botName}/{chatId}.memory.json
+// 路径: ~/Desktop/imtoagent/sessions/{botName}/{chatId}.memory.json
 // ================================================================
 
 const fs = require('fs');
@@ -11,7 +11,7 @@ const path = require('path');
 import type { Session, SessionManager, CallStats } from './types';
 
 const HOME = process.env.HOME || '/Users/keyi';
-const SESSIONS_BASE = path.join(HOME, 'Desktop', 'cc-gateway', 'sessions');
+const SESSIONS_BASE = path.join(HOME, 'Desktop', 'imtoagent', 'sessions');
 
 /** 默认统计值 */
 const EMPTY_STATS: CallStats = {

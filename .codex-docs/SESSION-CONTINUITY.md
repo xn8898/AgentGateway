@@ -19,7 +19,7 @@ CodexAgentModule.handleMessage()
   │
   ├─ 优先: exec-server WebSocket (JSON-RPC, app-server v2)
   │   getExecServerManager().getClient(chatId)
-  │     → ws.send('initialize', { clientName: 'cc-gateway', resumeSessionId?: string })
+  │     → ws.send('initialize', { clientName: 'imtoagent', resumeSessionId?: string })
   │     → ws.send('thread/start', { cwd, model, ... })  或  ws.send('thread/resume', { thread_id })
   │     → ws.send('turn/start', { thread_id, input: [{text: prompt}] })
   │     ← 通知流: TurnStartedNotification
@@ -31,7 +31,7 @@ CodexAgentModule.handleMessage()
   │
   └─ 回退: codex exec (Bun.spawn 一次性子进程)
       spawnCodexExec / spawnCodexResume
-        → codex exec -p ccgateway ...
+        → codex exec -p imtoagent ...
 ```
 
 ## 线程管理
@@ -73,7 +73,7 @@ CodexAgentModule.handleMessage()
 | `ProcessExitedNotification` | — | 子进程退出 |
 | `ContextCompactedNotification` | `thread_id`, `turn_id` | 上下文压缩 |
 
-## CC Gateway 需要做的适配
+## IMtoAgent 需要做的适配
 
 | 事项 | 说明 |
 |------|------|

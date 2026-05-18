@@ -470,10 +470,24 @@ ${b.content || ''}`;
       },
     });
 
+    // 自定义 Logger — 过滤 SDK 内部 WS 重连噪音
+    const quietLogger = {
+      info: (...args: any[]) => { /* 静默 info */ },
+      warn: (...args: any[]) => { /* 静默 warn */ },
+      error: (...args: any[]) => {
+        const msg = args.join(' ');
+        // 过滤已知的 SDK 内部 WS 重连噪音（不影响功能，SDK 自带自动重连）
+        if (msg.includes('[ws]') && (msg.includes('ECONNREFUSED') || msg.includes('connect failed') || msg.includes('system busy') || msg.includes('repeat connection'))) return;
+        console.error(`[Feishu-SDK] ${msg}`);
+      },
+      debug: (...args: any[]) => { /* 静默 debug */ },
+    };
+
     this.wsClient = new Lark.WSClient({
       appId: this.appId,
       appSecret: this.appSecret,
-      loggerLevel: Lark.LoggerLevel.warn,
+      logger: quietLogger,
+      loggerLevel: Lark.LoggerLevel.info,
     });
 
     this.wsClient.start({ eventDispatcher: dispatcher })

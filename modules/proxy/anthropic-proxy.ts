@@ -14,6 +14,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import { getCurrentBot } from '../bot-context';
+import { handleCodexRequest } from './codex-proxy';
 
 // ===== 共享状态 =====
 export interface ModelAliases {
@@ -48,7 +49,7 @@ interface ProviderConfig {
 
 let providers = new Map<string, ProviderConfig>();
 
-const CONFIG_PATH = process.env.HOME + '/Desktop/cc-gateway/providers.json';
+const CONFIG_PATH = process.env.HOME + '/Desktop/imtoagent/providers.json';
 
 export function loadProviders(): { providers: Map<string, ProviderConfig>; defaultModel: string } {
   providers = new Map<string, ProviderConfig>();
@@ -89,7 +90,7 @@ export function saveActiveModel(modelSpec: string): void {
 }
 
 // ===== 会话级模型映射 =====
-const SESSIONS_DIR = process.env.HOME + '/Desktop/cc-gateway/sessions';
+const SESSIONS_DIR = process.env.HOME + '/Desktop/imtoagent/sessions';
 
 // ===== reasoning_content 缓存（跨请求持久化，用于下游 client 丢失 thinking 块时注入） =====
 const reasoningCache = new Map<string, string>();
@@ -466,6 +467,8 @@ function openAIToAnthropic(openAIBody: any, modelName: string): any {
         type: 'tool_use',
         id: tc.id || `tool_${Date.now()}`,
         name: tc.function?.name || '',
+        // 反向重命名 web_search_20250305 → WebSearch
+        ...(tc.function?.name === 'web_search_20250305' ? { name: 'WebSearch' } : {}),
         input,
       });
     }
@@ -648,8 +651,11 @@ function openAIStreamToAnthropic(openAIStream: NodeJS.ReadableStream, res: http.
         for (const tc of delta.tool_calls) {
           const tcId = tc.id || `tool_${Date.now()}`;
           const tcName = tc.function?.name || '';
-          if (tcName) {
-            startToolUseBlock(tcId, tcName);
+          // 反向重命名 web_search_20250305 → WebSearch（恢复 Claude Code 原名）
+          const resolvedName = tcName === 'web_search_20250305' ? 'WebSearch' : tcName;
+          if (resolvedName !== tcName) tc.function.name = resolvedName;
+          if (resolvedName) {
+            startToolUseBlock(tcId, resolvedName);
           }
           if (tc.function?.arguments) {
             sendEvent('content_block_delta', {
@@ -699,6 +705,19 @@ let server: http.Server | null = null;
 const REQUEST_TIMEOUT = 120_000; // 120 秒
 
 function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const reqUrl = new URL(req.url || '/', 'http://localhost');
+  const reqPath = reqUrl.pathname;
+
+  // Codex 路径 → 转发到 codex handler
+  if (req.method === 'GET' && reqPath === '/health') {
+    handleCodexDispatch(req, res);
+    return;
+  }
+  if (reqPath === '/v1/responses' || reqPath.startsWith('/v1/responses')) {
+    handleCodexDispatch(req, res);
+    return;
+  }
+
   const cfg = sharedState.activeConfig;
   if (!cfg) {
     res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -711,8 +730,6 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   const upstreamHost = urlObj.host;
   const upstreamProto = urlObj.protocol.replace(':', '');
   const basePath = urlObj.pathname.replace(/\/+$/, ''); // 去掉尾部斜杠
-  const reqUrl = new URL(req.url || '/', 'http://localhost');
-  const reqPath = reqUrl.pathname;
 
   // 处理 /v1/models 请求：返回当前供应商的模型列表（Claude Code SDK 会调用）
   if (reqPath === '/v1/models' && req.method === 'GET') {
@@ -967,6 +984,43 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     });
 
     upstreamReq.end(finalBody);
+  });
+}
+
+/** 将 Node req/res 桥接到 codex handler */
+async function handleCodexDispatch(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  // 收集请求体
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk: Buffer) => chunks.push(chunk));
+  req.on('end', async () => {
+    const body = Buffer.concat(chunks).toString('utf-8');
+    const reqUrl = new URL(req.url || '/', 'http://localhost');
+
+    try {
+      const result = await handleCodexRequest(body, reqUrl.pathname, req.method || 'GET');
+
+      res.writeHead(result.status, result.headers);
+
+      if (result.body instanceof ReadableStream) {
+        // 流式响应：pipe 到客户端
+        const reader = result.body.getReader();
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { res.end(); break; }
+            res.write(value);
+          }
+        };
+        pump().catch(() => { try { res.end(); } catch {} });
+      } else {
+        res.end(result.body);
+      }
+    } catch (e: any) {
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+      }
+      res.end(JSON.stringify({ error: e.message }));
+    }
   });
 }
 

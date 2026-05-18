@@ -220,7 +220,7 @@ export class OpenCodeAdapter implements AgentAdapter {
 // ================================================================
 // OpenCode Server 生命周期管理（模块级，单例）
 // ================================================================
-// CC Gateway 作为多 Agent 网关，在适配器层管理后端服务进程
+// IMtoAgent 作为多 Agent 网关，在适配器层管理后端服务进程
 // 未来 ClaudeAdapter / CodexAdapter 也可按需实现各自的 start/stop
 
 let _ocProcess: ReturnType<typeof Bun.spawn> | null = null;
@@ -243,11 +243,11 @@ export async function startOpenCodeServer(): Promise<void> {
   const child = Bun.spawn(
     ['opencode', 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
     {
-      cwd: process.env.HOME + '/Desktop/cc-gateway',
+      cwd: process.env.HOME + '/Desktop/imtoagent',
       env: {
         ...process.env,
         // 环形通信无需真实 key，但 OpenCode 的 Anthropic provider 要求此变量存在
-        ANTHROPIC_API_KEY: 'cc-gateway-local',
+        ANTHROPIC_API_KEY: 'imtoagent-local',
       },
       stdout: 'pipe',
       stderr: 'pipe',

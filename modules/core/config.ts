@@ -10,7 +10,7 @@ const path = require('path');
 import type { ConfigManager, BotConfig, ProviderConfig } from './types';
 
 const HOME = process.env.HOME || '/Users/keyi';
-const PROJECT_DIR = path.join(HOME, 'Desktop', 'cc-gateway');
+const PROJECT_DIR = path.join(HOME, 'Desktop', 'imtoagent');
 
 /** 全局 config.json 结构 */
 interface RawConfig {

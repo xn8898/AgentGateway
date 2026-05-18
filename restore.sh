@@ -1,8 +1,8 @@
 #!/bin/bash
-# CC Gateway 一键还原脚本
+# IMtoAgent 一键还原脚本
 # 用法: ./restore.sh [时间戳]
 
-GATEWAY_DIR="$HOME/Desktop/cc-gateway"
+GATEWAY_DIR="$HOME/Desktop/imtoagent"
 cd "$GATEWAY_DIR"
 
 # 列出可用备份

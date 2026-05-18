@@ -1,8 +1,8 @@
-# CC Gateway SDK 接口文档
+# IMtoAgent SDK 接口文档
 
 > 版本: v1.1.0  
 > 最后更新: 2026-05-16  
-> 项目位置: `~/Desktop/cc-gateway/`
+> 项目位置: `~/Desktop/imtoagent/`
 
 ---
 
@@ -24,11 +24,11 @@
 
 ## 1. 架构总览
 
-CC Gateway 是一个统一网关，将多个 IM 平台（飞书等）与多个 AI Agent 后端（Claude Code、Codex CLI、OpenCode 等）桥接起来。SDK 定义了标准接口层，使新模块可以独立开发、即插即用。
+IMtoAgent 是一个统一网关，将多个 IM 平台（飞书等）与多个 AI Agent 后端（Claude Code、Codex CLI、OpenCode 等）桥接起来。SDK 定义了标准接口层，使新模块可以独立开发、即插即用。
 
 ```
 ┌─────────────┐    ┌──────────────────────────────────┐    ┌─────────────┐
-│  IM 平台 A   │    │         CC Gateway SDK           │    │  Agent 后端 X │
+│  IM 平台 A   │    │         IMtoAgent SDK           │    │  Agent 后端 X │
 │  (飞书/… )   │◄──►│                                  │◄──►│ (Claude/…)  │
 ├─────────────┤    │  ┌──────────────────────────┐    │    ├─────────────┤
 │  IM 平台 B   │    │  │     AgentRuntime         │    │    │  Agent 后端 Y │
@@ -220,8 +220,8 @@ export async function startOpenCodeServer(): Promise<void> {
 
   // 启动新进程
   const child = Bun.spawn(['opencode', 'serve', '--port', '4096'], {
-    cwd: process.env.HOME + '/Desktop/cc-gateway',
-    env: { ...process.env, ANTHROPIC_API_KEY: 'cc-gateway-local' },
+    cwd: process.env.HOME + '/Desktop/imtoagent',
+    env: { ...process.env, ANTHROPIC_API_KEY: 'imtoagent-local' },
     stdout: 'pipe', stderr: 'pipe',
   });
 

@@ -27,7 +27,7 @@ function getOcConfig(): OpenCodeConfig {
   if (!_ocConfig) {
     try {
       const fs = require('fs');
-      const raw = JSON.parse(fs.readFileSync(process.env.HOME + '/Desktop/cc-gateway/config.json', 'utf-8'));
+      const raw = JSON.parse(fs.readFileSync(process.env.HOME + '/Desktop/imtoagent/config.json', 'utf-8'));
       const oc = raw.opencode || {};
       _ocConfig = {
         serverUrl: oc.serverUrl || 'http://localhost:4096',

@@ -1,4 +1,4 @@
-# CC Gateway 命令体系设计
+# IMtoAgent 命令体系设计
 
 > 2026-05-10 · 三层命令架构，已实现 Layer1 网关级 + Layer2 翻译级
 

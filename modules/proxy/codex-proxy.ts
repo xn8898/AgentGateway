@@ -1,5 +1,5 @@
 // Codex Proxy — Responses API ↔ Chat Completions 双向转换
-// 端口 18900 · 可作为模块导入或被 Bun 直接运行
+// Codex 请求处理器（已合并到 18899） · 可作为模块导入或被 Bun 直接运行
 
 import { getCurrentBot } from '../bot-context';
 import { buildSystemPrompt, resolveCapabilities, DEFAULT_TERMINAL_CAPS } from '../prompt-builder';
@@ -26,7 +26,7 @@ function getConfig(): CodexProxyConfig {
     // Fallback: 尝试从 config.json 读取
     try {
       const fs = require('fs');
-      const configPath = process.env.HOME + '/Desktop/cc-gateway/config.json';
+      const configPath = process.env.HOME + '/Desktop/imtoagent/config.json';
       const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const codex = raw.codex || {};
       const providers = raw.providers || {};
@@ -100,17 +100,16 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
 
   // 工具转换
   if (body.tools?.length) {
-    const allNames = body.tools.map((t: any) => t.name || t.function?.name).join(', ');
+    const allNames = body.tools.map((t: any) => t.name || t.function?.name).filter((n: string) => n && n.length > 0).join(', ');
     console.log(`[Codex] tools: ${allNames}`);
     chat.tools = body.tools
       .map((t: any) => {
         if (t.function) return t;
         const p = JSON.parse(JSON.stringify(t.parameters || {}, (_: string, v: any) => v === null ? undefined : v));
         if (!p.type) p.type = 'object';
-        const toolName = (t.name === 'web_search' || t.function?.name === 'web_search') ? 'web_search_20250305' : (t.name || '');
-        return { type: 'function', function: { name: toolName, description: t.description || '', parameters: p } };
+        return { type: 'function', function: { name: t.name || '', description: t.description || '', parameters: p } };
       })
-      .filter((t: any) => t.function?.name);
+      .filter((t: any) => t.function?.name && t.function.name.length > 0);
   }
 
   // 消息转换
@@ -217,6 +216,8 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
     i++;
   }
 
+  // Clean up orphaned tool messages (from truncation)
+  chat.messages = cleanOrphanTools(chat.messages);
   // Validate tool_call/tool pairing before returning
   chat.messages = validateToolPairing(chat.messages);
   // DEBUG: log converted messages
@@ -234,6 +235,26 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
 // 确保每个 assistant(tool_calls) 后面紧跟对应数量的 tool 消息，
 // 且 tool_call_id 一一对应。deepseek-v4-pro 等严格 API 需要此验证。
 // ================================================================
+function cleanOrphanTools(messages: ChatMessage[]): ChatMessage[] {
+  // Build set of all tool_call ids from assistant messages with tool_calls
+  const allToolCallIds = new Set<string>();
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.tool_calls?.length) {
+      for (const tc of m.tool_calls) {
+        allToolCallIds.add(tc.id);
+      }
+    }
+  }
+  // Remove tool messages whose tool_call_id doesn't match any existing tool_call
+  const filtered = messages.filter(m => {
+    if (m.role !== 'tool') return true;
+    if (allToolCallIds.has(m.tool_call_id || '')) return true;
+    console.warn(`[Codex] 🗑️ 丢弃孤儿 tool 消息: call_id=${(m.tool_call_id || '').slice(0,16)}`);
+    return false;
+  });
+  return filtered.length === messages.length ? messages : filtered;
+}
+
 function validateToolPairing(messages: ChatMessage[]): ChatMessage[] {
   const result: ChatMessage[] = [];
   let i = 0;
@@ -276,7 +297,7 @@ function validateToolPairing(messages: ChatMessage[]): ChatMessage[] {
         } else {
           // P1 修复：不再丢弃整个 assistant 消息，而是保留原始内容并附加警告
           // 这样下游上下文不会完全丢失
-          const warning = '[⚠️ CC Gateway 警告：tool_call 未找到匹配的 tool 响应，保留原始消息防止上下文丢失]';
+          const warning = '[⚠️ IMtoAgent 警告：tool_call 未找到匹配的 tool 响应，保留原始消息防止上下文丢失]';
           console.warn(`[Codex] ⚠️ 保留原始 assistant 消息（附带警告），而非丢弃`);
           const preserved: ChatMessage = {
             role: 'assistant',
@@ -400,6 +421,7 @@ async function streamResponse(upstreamRes: Response, resWriter: WritableStreamDe
             }
             if (tc.id) pending.id = tc.id;
             if (tc.function?.name) {
+              // Reverse translation: map DeepSeek response tool names back to upstream names
               pending.name = tc.function.name;
             }
             if (tc.function?.arguments) {
@@ -503,111 +525,95 @@ export function accumulateProxyUsage(inputTokens: number, outputTokens: number) 
   _proxyUsage.outputTokens += outputTokens;
 }
 
-// 3. HTTP Server
+// 3. 请求处理器（供主代理端口 18899 按路径分发调用）
 // ================================================================
-let server: any = null;
 
-export function startCodexProxy(port = 18900): Promise<number> {
-  return new Promise((resolve) => {
-    server = Bun.serve({
-      port,
-      idleTimeout: 120,
-      async fetch(req: Request): Promise<Response> {
-        try {
-          const url = new URL(req.url);
-
-          if (req.method === 'GET' && url.pathname === '/health')
-            return new Response(JSON.stringify({ status: 'ok', model: REPORTED_MODEL() }), { headers: { 'Content-Type': 'application/json' } });
-
-          if (req.method === 'GET' && url.pathname.includes('/models'))
-            return new Response(JSON.stringify({ object: 'list', data: [{ id: REPORTED_MODEL(), object: 'model', created: Date.now(), owned_by: 'openai' }] }), { headers: { 'Content-Type': 'application/json' } });
-
-          if (req.method === 'POST' && (url.pathname === '/v1/responses' || url.pathname.includes('/responses'))) {
-            const body = await req.json();
-            const chatReq = responsesToChat(body);
-
-            // 🧠 动态注入灵魂 + IM 能力到系统 Prompt
-            const ctx = getCurrentBot();
-            const botName = ctx?.botName || 'CodexBot';
-
-            const systemPrompt = buildSystemPrompt({
-              caps: ctx?.caps || null,
-              botName,
-            });
-            console.log(`[Codex] 📝 system prompt built (${systemPrompt.length} chars, bot=${botName})`);
-
-            let sysMsg = chatReq.messages.find((m: ChatMessage) => m.role === 'system');
-            if (!sysMsg) {
-              sysMsg = { role: 'system', content: '' };
-              chatReq.messages.unshift(sysMsg);
-            }
-            if (typeof sysMsg.content !== 'string') sysMsg.content = '';
-            // 追加到已有 system message 后面
-            sysMsg.content = sysMsg.content + '\n\n---\n\n' + systemPrompt;
-
-            const roles = chatReq.messages?.map((m: ChatMessage) => m.role).join(',');
-            console.log(`[Codex] → ${chatReq.model} [${roles}] tools:${chatReq.tools?.length || 0}`);
-
-            const ac = new AbortController();
-            const timeout = setTimeout(() => ac.abort(), 180_000);
-
-            let upstreamRes: Response;
-            try {
-              upstreamRes = await fetch(UPSTREAM(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY()}` },
-                body: JSON.stringify(chatReq),
-                signal: ac.signal,
-              });
-            } catch (e: any) {
-              console.error(`[Codex] ❌ fetch failed: ${e.message}`);
-              return new Response(JSON.stringify({ error: 'upstream unavailable' }), { status: 502, headers: { 'Content-Type': 'application/json' } });
-            } finally {
-              clearTimeout(timeout);
-            }
-
-            if (!upstreamRes.ok) {
-              const errText = await upstreamRes.text();
-              console.error(`[Codex] ❌ ${upstreamRes.status}: ${errText.slice(0, 200)}`);
-              return new Response(JSON.stringify({ error: errText.slice(0, 500) }), { status: upstreamRes.status, headers: { 'Content-Type': 'application/json' } });
-            }
-
-            const { readable, writable } = new TransformStream();
-            const writer = writable.getWriter();
-            streamResponse(upstreamRes, writer).catch((e: any) => {
-              // 上游连接断开或客户端已关闭，静默处理（codex 进程被杀等常见场景）
-              console.error(`[Codex] streamResponse 断开: ${e?.message || e}`);
-            }).finally(() => {
-              if (!writer.closed) writer.close().catch(() => {});
-            });
-            return new Response(readable, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } });
-          }
-
-          return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
-        } catch (e: any) {
-          console.error(`[Codex] 💥 unhandled: ${e.message}`);
-          return new Response(JSON.stringify({ error: 'internal error' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
-        }
-      },
-    });
-    console.log(`[Codex Proxy] :${server.port} → ${UPSTREAM()}`);
-    resolve(server.port);
-  });
-}
-
-export function stopCodexProxy(): Promise<void> {
-  return new Promise((resolve) => {
-    if (server) {
-      server.stop();
-      console.log('[Codex Proxy] 已关闭');
+export async function handleCodexRequest(
+  reqBody: string,
+  reqPath: string,
+  reqMethod: string
+): Promise<{ status: number; headers: Record<string, string>; body: string | ReadableStream }> {
+  try {
+    // GET /health
+    if (reqMethod === 'GET' && reqPath === '/health') {
+      return { status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ok', model: REPORTED_MODEL() }) };
     }
-    resolve();
-  });
+
+    // GET /v1/models
+    if (reqMethod === 'GET' && reqPath.includes('/models')) {
+      return { status: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ object: 'list', data: [{ id: REPORTED_MODEL(), object: 'model', created: Date.now(), owned_by: 'openai' }] }) };
+    }
+
+    // POST /v1/responses → Chat Completions
+    if (reqMethod === 'POST' && (reqPath === '/v1/responses' || reqPath.includes('/responses'))) {
+      const body = JSON.parse(reqBody);
+      const chatReq = responsesToChat(body);
+
+      // 🧠 动态注入灵魂 + IM 能力到系统 Prompt
+      const ctx = getCurrentBot();
+      const botName = ctx?.botName || 'CodexBot';
+
+      const systemPrompt = buildSystemPrompt({
+        caps: ctx?.caps || null,
+        botName,
+      });
+      console.log(`[Codex] 📝 system prompt built (${systemPrompt.length} chars, bot=${botName})`);
+
+      let sysMsg = chatReq.messages.find((m: ChatMessage) => m.role === 'system');
+      if (!sysMsg) {
+        sysMsg = { role: 'system', content: '' };
+        chatReq.messages.unshift(sysMsg);
+      }
+      if (typeof sysMsg.content !== 'string') sysMsg.content = '';
+      sysMsg.content = sysMsg.content + '\n\n---\n\n' + systemPrompt;
+
+      const roles = chatReq.messages?.map((m: ChatMessage) => m.role).join(',');
+      console.log(`[Codex] → ${chatReq.model} [${roles}] tools:${chatReq.tools?.length || 0}`);
+
+      const ac = new AbortController();
+      const timeout = setTimeout(() => ac.abort(), 180_000);
+
+      let upstreamRes: Response;
+      try {
+        upstreamRes = await fetch(UPSTREAM(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY()}` },
+          body: JSON.stringify(chatReq),
+          signal: ac.signal,
+        });
+      } catch (e: any) {
+        console.error(`[Codex] ❌ fetch failed: ${e.message}`);
+        return { status: 502, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'upstream unavailable' }) };
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!upstreamRes.ok) {
+        const errText = await upstreamRes.text();
+        console.error(`[Codex] ❌ ${upstreamRes.status}: ${errText.slice(0, 200)}`);
+        return { status: upstreamRes.status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: errText.slice(0, 500) }) };
+      }
+
+      // 流式：返回 ReadableStream 供调用方 pipe
+      return {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+        body: upstreamRes.body!,  // 直接透传上游流
+      };
+    }
+
+    return { status: 404, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'not found' }) };
+  } catch (e: any) {
+    console.error(`[Codex] 💥 unhandled: ${e.message}`);
+    return { status: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'internal error' }) };
+  }
 }
 
-// ================================================================
-// 直接运行: bun run codex-proxy.ts
-// ================================================================
-if (import.meta.main) {
-  startCodexProxy();
+// 兼容旧引用（不再启动独立服务器）
+export function startCodexProxy(_port?: number): Promise<number> {
+  console.log('[Codex Proxy] 已合并到 18899 端口');
+  return Promise.resolve(18899);
+}
+export function stopCodexProxy(): Promise<void> {
+  return Promise.resolve();
 }

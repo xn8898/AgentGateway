@@ -4,7 +4,7 @@
 
 ## Claude Agent SDK 的会话管理方式
 
-ClaudeBot 路径中，会话生命周期完全由 **Claude Agent SDK** 管理，ccgateway 只扮演极轻量的角色。
+ClaudeBot 路径中，会话生命周期完全由 **Claude Agent SDK** 管理，imtoagent 只扮演极轻量的角色。
 
 ### 核心代码 (index.ts `_startClaudeLoop`)
 
@@ -35,7 +35,7 @@ for await (const msg of q) {
 
 ```
 ┌─────────────┐     sessionId      ┌──────────────────────┐
-│  ccgateway   │ ──────────────────│  Claude Agent SDK     │
+│  imtoagent   │ ──────────────────│  Claude Agent SDK     │
 │  (Bot 层)    │                    │                       │
 │              │                    │  persistSession: true │
 │  只存:       │   resume/新建      │  自己管理磁盘持久化    │
@@ -47,10 +47,10 @@ for await (const msg of q) {
 ### 关键特征
 
 1. **SDK 原生管理会话** — `persistSession: true` 让 SDK 全权负责
-2. **ccgateway 只记住一个 id** — `sdkSessionId`，不管理会话内容、不维护映射逻辑
+2. **imtoagent 只记住一个 id** — `sdkSessionId`，不管理会话内容、不维护映射逻辑
 3. **首次调用自动创建** — `sessionId = crypto.randomUUID()`
 4. **后续调用自动恢复** — `resume = sdkSessionId`
-5. **session_id 由 SDK 返回** — ccgateway 被动捕获并保存
+5. **session_id 由 SDK 返回** — imtoagent 被动捕获并保存
 
 ### 对 CodexBot 的启示
 
@@ -58,7 +58,7 @@ CodexBot 的等价模式应该是：
 
 ```
 ┌─────────────┐    --last/--new    ┌──────────────────────┐
-│  ccgateway   │ ──────────────────│  Codex CLI            │
+│  imtoagent   │ ──────────────────│  Codex CLI            │
 │  (Bot 层)    │                    │                       │
 │              │                    │  resume --last        │
 │  不存        │   恢复最近/新建    │  自己知道上次 session  │
@@ -76,4 +76,4 @@ CodexBot 的等价模式应该是：
 不管 CodexBot 如何改进，ClaudeBot 的会话管理不受影响：
 - Bot 之间完全隔离
 - Claude Agent SDK 的 `persistSession` + `resume` 模式继续工作
-- ccgateway 的多 Bot 架构保持不变
+- imtoagent 的多 Bot 架构保持不变

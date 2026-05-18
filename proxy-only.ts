@@ -1,4 +1,4 @@
-// CC Gateway — Proxy Only 模式（用于 Claude Code CLI）
+// IMtoAgent — Proxy Only 模式（用于 Claude Code CLI）
 // 只启动 HTTP 代理，不含飞书 Bot
 
 import * as fs from 'fs';
@@ -31,7 +31,7 @@ if (defaultCfg) {
 // 启动代理
 const PORT = cfg.system?.proxyPort || 18899;
 startAnthropicProxy(PORT).then((port: number) => {
-  console.log(`\n🚀 CC Gateway Proxy-Only 模式`);
+  console.log(`\n🚀 IMtoAgent Proxy-Only 模式`);
   console.log(`   代理: http://localhost:${port}/v1/messages`);
   console.log(`   模型: ${defaultModel}`);
   console.log(`   模式: 格式转换 (Anthropic ↔ OpenAI)`);

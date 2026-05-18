@@ -4,7 +4,7 @@
 
 ## 项目愿景
 
-让每个人通过 IM 拥有自己的智能体。CC Gateway 是 IM ↔ 多品种 Agent 的统一网关，打破 Agent 局限于桌面终端的现状。
+让每个人通过 IM 拥有自己的智能体。IMtoAgent 是 IM ↔ 多品种 Agent 的统一网关，打破 Agent 局限于桌面终端的现状。
 
 详见 [ARCHITECTURE.md](./ARCHITECTURE.md) 开篇。
 
@@ -61,7 +61,7 @@
 ## 当前文件结构
 
 ```
-cc-gateway/
+imtoagent/
 ├── index.ts                      # 主入口：飞书 WS、消息路由、命令系统
 ├── config.json / providers.json  # 配置
 ├── modules/

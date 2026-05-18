@@ -1,5 +1,5 @@
 #!/bin/bash
-# CC Gateway — 开发模式（自动重载 + 清缓存）
+# IMtoAgent — 开发模式（自动重载 + 清缓存）
 # 用法:
 #   bash dev.sh          # 仅代理（proxy-only）
 #   bash dev.sh full     # 完整模式（代理 + 飞书）

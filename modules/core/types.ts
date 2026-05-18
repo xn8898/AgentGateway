@@ -1,5 +1,5 @@
 // ================================================================
-// SDK 核心类型 — CC Gateway 新模块只需实现 AgentAdapter
+// SDK 核心类型 — IMtoAgent 新模块只需实现 AgentAdapter
 // ================================================================
 
 import type { UnifiedBlock, IMCapabilities } from '../capabilities';

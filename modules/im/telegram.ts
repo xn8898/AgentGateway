@@ -11,19 +11,49 @@ import type { UnifiedBlock } from '../capabilities';
 export interface TelegramConfig {
   /** Bot Token（从 @BotFather 获取） */
   token: string;
+  /** HTTP 代理地址（直连被墙时使用，如 http://127.0.0.1:7890） */
+  proxy?: string;
 }
 
 export class TelegramAdapter implements IMModule {
   private token: string;
   private apiUrl: string;
+  private proxy?: string;
   private handler: MessageHandler | null = null;
   private running = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private lastUpdateId = 0;
 
+  // ================================================================
+  // 熔断 + 指数退避：网络受限时避免刷屏和拖垮进程
+  // ================================================================
+  private consecutiveFailures = 0;    // 连续失败次数
+  private circuitOpen = false;        // 熔断器状态
+  private backoffMs = 100;            // 当前退避间隔
+  private readonly maxBackoffMs = 60_000;   // 最大退避 60s
+  private readonly failureThreshold = 5;    // 连续 N 次失败后进入熔断
+  private readonly recoveryInterval = 30_000; // 熔断后每 30s 试探一次
+  private warnedCircuitOpen = false;  // 避免重复打印熔断日志
+
   constructor(cfg: TelegramConfig) {
     this.token = cfg.token;
+    this.proxy = cfg.proxy;
     this.apiUrl = `https://api.telegram.org/bot${this.token}`;
+
+    // 注意：不再设置全局 HTTPS_PROXY 环境变量，避免影响进程内其他 HTTP 请求
+    // 代理仅在 Telegram 自身的 fetch 调用中局部使用
+    if (cfg.proxy) {
+      console.log(`[Telegram] 已配置代理: ${cfg.proxy}（局部使用，不影响其他模块）`);
+    }
+  }
+
+  /** 代理感知的 fetch（局部使用代理，不影响全局） */
+  private async _fetch(url: string, init?: RequestInit): Promise<Response> {
+    // 若有代理配置，在 fetch dispatcher 中局部指定
+    if (this.proxy) {
+      return fetch(url, { ...init, proxy: this.proxy });
+    }
+    return fetch(url, init);
   }
 
   // ================================================================
@@ -63,9 +93,11 @@ export class TelegramAdapter implements IMModule {
   private async _poll(): Promise<void> {
     if (!this.running) return;
 
+    let success = false;
+
     try {
-      const url = `${this.apiUrl}/getUpdates?timeout=30&offset=${this.lastUpdateId + 1}`;
-      const res = await fetch(url);
+      const url = `${this.apiUrl}/getUpdates?timeout=${this.circuitOpen ? 5 : 30}&offset=${this.lastUpdateId + 1}`;
+      const res = await this._fetch(url);
       const data = await res.json();
 
       if (data.ok && data.result) {
@@ -84,13 +116,48 @@ export class TelegramAdapter implements IMModule {
             );
           }
         }
+        success = true;
       }
     } catch (e: any) {
       console.error('[Telegram] 长轮询错误:', e.message);
     }
 
-    // 立即发起下一次轮询
-    this.pollTimer = setTimeout(() => this._poll(), 100);
+    if (success) {
+      this._onSuccess();
+    } else {
+      this._onFailure();
+    }
+
+    this.pollTimer = setTimeout(() => this._poll(), this.backoffMs);
+  }
+
+  /** 成功后重置所有状态 */
+  private _onSuccess(): void {
+    if (this.circuitOpen) {
+      console.log('[Telegram] 网络恢复，长轮询恢复正常');
+    }
+    this.circuitOpen = false;
+    this.consecutiveFailures = 0;
+    this.backoffMs = 100;
+    this.warnedCircuitOpen = false;
+  }
+
+  /** 失败后指数退避，超过阈值进入熔断 */
+  private _onFailure(): void {
+    this.consecutiveFailures++;
+
+    if (this.consecutiveFailures >= this.failureThreshold && !this.circuitOpen) {
+      this.circuitOpen = true;
+      this.backoffMs = this.recoveryInterval;
+      if (!this.warnedCircuitOpen) {
+        console.error('[Telegram] ⚠️ 连续失败，进入熔断（每 30s 试探恢复）');
+        this.warnedCircuitOpen = true;
+      }
+    } else if (!this.circuitOpen) {
+      // 指数退避: 100 → 200 → 400 → 800 → 1600 → ...
+      this.backoffMs = Math.min(this.backoffMs * 2, this.maxBackoffMs);
+    }
+    // 熔断中保持 recoveryInterval 间隔
   }
 
   // ================================================================
@@ -225,7 +292,7 @@ export class TelegramAdapter implements IMModule {
       form.append('chat_id', chatId);
       form.append('photo', blob, 'image.png');
       if (alt) form.append('caption', alt);
-      await fetch(`${this.apiUrl}/sendPhoto`, { method: 'POST', body: form });
+      await this._fetch(`${this.apiUrl}/sendPhoto`, { method: 'POST', body: form });
     } else {
       await this._api('sendPhoto', {
         chat_id: chatId,
@@ -258,7 +325,7 @@ export class TelegramAdapter implements IMModule {
       form.append('chat_id', chatId);
       form.append('document', blob, filename);
       form.append('caption', filename);
-      await fetch(`${this.apiUrl}/sendDocument`, { method: 'POST', body: form });
+      await this._fetch(`${this.apiUrl}/sendDocument`, { method: 'POST', body: form });
     } else {
       await this._api('sendDocument', {
         chat_id: chatId,
@@ -280,7 +347,7 @@ export class TelegramAdapter implements IMModule {
       const form = new FormData();
       form.append('chat_id', chatId);
       form.append('audio', blob, filename);
-      await fetch(`${this.apiUrl}/sendAudio`, { method: 'POST', body: form });
+      await this._fetch(`${this.apiUrl}/sendAudio`, { method: 'POST', body: form });
     } else {
       await this._api('sendAudio', { chat_id: chatId, audio: url });
     }
@@ -319,7 +386,7 @@ export class TelegramAdapter implements IMModule {
   // ================================================================
 
   private async _api(method: string, params: Record<string, any>): Promise<any> {
-    const res = await fetch(`${this.apiUrl}/${method}`, {
+    const res = await this._fetch(`${this.apiUrl}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
