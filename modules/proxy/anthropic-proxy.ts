@@ -13,8 +13,10 @@
 
 import * as http from 'http';
 import * as fs from 'fs';
+import * as path from 'path';
 import { getCurrentBot } from '../bot-context';
 import { handleCodexRequest } from './codex-proxy';
+import { getDataDir, getSessionsDir } from '../utils/paths';
 
 // ===== 共享状态 =====
 export interface ModelAliases {
@@ -49,7 +51,7 @@ interface ProviderConfig {
 
 let providers = new Map<string, ProviderConfig>();
 
-const CONFIG_PATH = process.env.HOME + '/Desktop/imtoagent/providers.json';
+const CONFIG_PATH = path.join(getDataDir(), 'providers.json');
 
 export function loadProviders(): { providers: Map<string, ProviderConfig>; defaultModel: string } {
   providers = new Map<string, ProviderConfig>();
@@ -90,7 +92,7 @@ export function saveActiveModel(modelSpec: string): void {
 }
 
 // ===== 会话级模型映射 =====
-const SESSIONS_DIR = process.env.HOME + '/Desktop/imtoagent/sessions';
+const SESSIONS_DIR = () => getSessionsDir();
 
 // ===== reasoning_content 缓存（跨请求持久化，用于下游 client 丢失 thinking 块时注入） =====
 const reasoningCache = new Map<string, string>();
@@ -112,7 +114,7 @@ function conversationFingerprint(messages: any[]): string {
 
 /** 加载用户会话配置 */
 export function loadSessionConfig(customPath?: string): { activeModel: string; modelAliases: ModelAliases } {
-  const sessionPath = customPath || `${SESSIONS_DIR}/_default.json`;
+  const sessionPath = customPath || `${SESSIONS_DIR()}/_default.json`;
   const defaultAliases: ModelAliases = {
     default: 'deepseek/deepseek-v4-pro[1m]',
     sonnet: 'deepseek/deepseek-v4-flash[1m]',
@@ -139,11 +141,12 @@ export function loadSessionConfig(customPath?: string): { activeModel: string; m
 
 /** 保存用户会话配置 */
 export function saveSessionConfig(userId: string, activeModel: string, modelAliases: ModelAliases): void {
+  const sessionsBase = SESSIONS_DIR();
   try {
-    if (!fs.existsSync(SESSIONS_DIR)) {
-      fs.mkdirSync(SESSIONS_DIR, { recursive: true });
+    if (!fs.existsSync(sessionsBase)) {
+      fs.mkdirSync(sessionsBase, { recursive: true });
     }
-    const sessionPath = `${SESSIONS_DIR}/${userId}.json`;
+    const sessionPath = `${sessionsBase}/${userId}.json`;
     const cfg = {
       userId,
       activeModel,
@@ -1035,7 +1038,7 @@ export interface SessionMemoryData {
 }
 
 export function saveSessionMemory(memoryPath: string, data: SessionMemoryData): void {
-  const dir = require('path').dirname(memoryPath);
+  const dir = path.dirname(memoryPath);
   try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch {}
   try {
     fs.writeFileSync(memoryPath, JSON.stringify(data, null, 2));
@@ -1055,7 +1058,7 @@ export function loadSessionMemory(memoryPath: string): SessionMemoryData | null 
 }
 
 export function deleteSessionMemory(chatId: string): void {
-  const filePath = `${SESSIONS_DIR}/${chatId}.memory.json`;
+  const filePath = `${SESSIONS_DIR()}/${chatId}.memory.json`;
   try {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   } catch (e: any) {
@@ -1065,8 +1068,9 @@ export function deleteSessionMemory(chatId: string): void {
 
 export function listPersistedSessions(): string[] {
   try {
-    if (!fs.existsSync(SESSIONS_DIR)) return [];
-    return fs.readdirSync(SESSIONS_DIR)
+    const sessionsBase = SESSIONS_DIR();
+    if (!fs.existsSync(sessionsBase)) return [];
+    return fs.readdirSync(sessionsBase)
       .filter(f => f.endsWith('.memory.json'))
       .map(f => f.replace('.memory.json', ''));
   } catch (e: any) {

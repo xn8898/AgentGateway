@@ -104,6 +104,7 @@ export class AgentRuntime {
         const input: AgentInput = {
           chatId: ctx.chatId,
           text: ctx.text,
+          attachments: ctx.attachments,
           session,
           workingDir: ctx.workingDir,
           systemPrompt: ctx.systemPrompt,

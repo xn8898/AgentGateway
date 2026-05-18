@@ -1,0 +1,57 @@
+{
+  "system": {
+    "defaultProjectDir": "/path/to/your/projects",
+    "idleTimeoutMinutes": 30,
+    "maxReplyLength": 140000
+  },
+  "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "YOUR_DEEPSEEK_API_KEY",
+      "models": [
+        "deepseek-v4-pro",
+        "deepseek-v4-flash"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 0.55,
+        "outputPerMillion": 2.19
+      }
+    }
+  },
+  "defaultModel": "deepseek/deepseek-v4-pro",
+  "modelAliases": {
+    "default": "deepseek/deepseek-v4-pro",
+    "sonnet": "deepseek/deepseek-v4-pro",
+    "opus": "deepseek/deepseek-v4-pro",
+    "haiku": "deepseek/deepseek-v4-flash",
+    "best": "deepseek/deepseek-v4-pro",
+    "opencode": "deepseek/deepseek-v4-pro"
+  },
+  "execServer": {
+    "enabled": true,
+    "startupTimeoutMs": 15000,
+    "fallbackToExec": true
+  },
+  "codex": {
+    "reportedModel": "gpt-5.5",
+    "model": "deepseek-v4-pro",
+    "upstream": "https://api.deepseek.com/v1/chat/completions"
+  },
+  "opencode": {
+    "serverUrl": "http://localhost:4096",
+    "defaultModel": {
+      "providerID": "anthropic",
+      "modelID": "claude-sonnet-4-5"
+    }
+  },
+  "rateLimit": {
+    "enabled": true,
+    "maxRequests": 30,
+    "windowMs": 60000
+  },
+  "shutdown": {
+    "gracePeriodMs": 5000
+  },
+  "bots": []
+}

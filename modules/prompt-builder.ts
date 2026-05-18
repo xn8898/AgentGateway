@@ -15,6 +15,7 @@
 
 import type { IMCapabilities } from './types';
 import { buildCapabilityPrompt } from './capabilities';
+import { getSoulDir } from './utils/paths';
 
 // ================================================================
 // 默认终端能力（无 IM 模块时的 fallback）
@@ -37,7 +38,7 @@ export const DEFAULT_TERMINAL_CAPS: IMCapabilities = {
 // 加载顺序：rules → identity → profile → workspace → skills
 // ================================================================
 export function loadSoul(botName: string): string {
-  const soulDir = `${process.env.HOME}/Desktop/imtoagent/soul/${botName}`;
+  const soulDir = getSoulDir(botName);
   const soulOrder = ['rules.md', 'identity.md', 'profile.md', 'workspace.md', 'skills.md'];
   const parts: string[] = [];
   try {

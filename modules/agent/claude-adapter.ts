@@ -7,7 +7,7 @@
 
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentAdapter, AgentInput, AgentOutput, Session } from '../core/types';
+import type { AgentAdapter, AgentInput, AgentOutput, Session, buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
 
 // ================================================================
@@ -85,6 +85,12 @@ export class ClaudeAdapter implements AgentAdapter {
     const modelName = model.includes('/') ? model.slice(model.indexOf('/') + 1) : model;
     const aliases = this.ctx.modelAliases;
 
+    // 附件信息注入：让 Agent 知道用户发送了附件（图片/文件/语音）及本地路径
+    let effectiveText = text;
+    if (input.attachments && input.attachments.length > 0) {
+      effectiveText = buildAttachmentHint(input.attachments) + '\n\n---\n\n' + effectiveText;
+    }
+
     // Claude SDK 环境变量（走本地 :18899 代理）
     const customEnv: Record<string, string> = {
       ...process.env,
@@ -132,7 +138,7 @@ export class ClaudeAdapter implements AgentAdapter {
     const q = query({
       prompt: [{
         type: 'user',
-        message: { role: 'user', content: [{ type: 'text', text }] },
+        message: { role: 'user', content: [{ type: 'text', text: effectiveText }] },
       }],
       options: queryOptions,
       env: customEnv,

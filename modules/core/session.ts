@@ -9,9 +9,9 @@ const fs = require('fs');
 const path = require('path');
 
 import type { Session, SessionManager, CallStats } from './types';
+import { getSessionsDir } from '../utils/paths';
 
-const HOME = process.env.HOME || '/Users/keyi';
-const SESSIONS_BASE = path.join(HOME, 'Desktop', 'imtoagent', 'sessions');
+const SESSIONS_BASE = getSessionsDir();
 
 /** 默认统计值 */
 const EMPTY_STATS: CallStats = {
@@ -86,13 +86,15 @@ export class FileSessionManager implements SessionManager {
 
   /** 获取 Session 文件路径 */
   private sessionPath(botName: string, chatId: string): string {
-    const botDir = path.join(SESSIONS_BASE, botName);
+    const sessionsBase = getSessionsDir();
+    const botDir = path.join(sessionsBase, botName);
     return path.join(botDir, `${chatId}.memory.json`);
   }
 
   /** 确保目录存在 */
   private ensureDir(botName: string): void {
-    const botDir = path.join(SESSIONS_BASE, botName);
+    const sessionsBase = getSessionsDir();
+    const botDir = path.join(sessionsBase, botName);
     if (!fs.existsSync(botDir)) {
       fs.mkdirSync(botDir, { recursive: true });
     }

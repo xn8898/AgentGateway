@@ -7,6 +7,9 @@ import type { AgentContext, SessionData } from '../types';
 import { parseToBlocks } from '../capabilities';
 import { resolveCapabilities, buildSystemPrompt } from '../prompt-builder';
 import { calculateCost } from '../proxy/anthropic-proxy';
+import * as path from 'path';
+import * as fs from 'fs';
+import { getDataDir } from '../utils/paths';
 
 // ================================================================
 // 配置（从 config.json 读取）
@@ -26,8 +29,8 @@ export function initOpenCodeConfig(cfg: OpenCodeConfig) {
 function getOcConfig(): OpenCodeConfig {
   if (!_ocConfig) {
     try {
-      const fs = require('fs');
-      const raw = JSON.parse(fs.readFileSync(process.env.HOME + '/Desktop/imtoagent/config.json', 'utf-8'));
+      
+      const raw = JSON.parse(fs.readFileSync(path.join(getDataDir(), 'config.json'), 'utf-8'));
       const oc = raw.opencode || {};
       _ocConfig = {
         serverUrl: oc.serverUrl || 'http://localhost:4096',

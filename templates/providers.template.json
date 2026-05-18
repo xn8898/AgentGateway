@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "YOUR_DEEPSEEK_API_KEY",
+      "models": [
+        "deepseek-v4-pro",
+        "deepseek-v4-flash"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 0.55,
+        "outputPerMillion": 2.19,
+        "currency": "USD"
+      }
+    }
+  },
+  "defaultModel": "deepseek/deepseek-v4-pro"
+}

@@ -7,7 +7,7 @@
 //   2. CLI 子进程（fallback）：codex exec/resume
 // ================================================================
 
-import type { AgentAdapter, AgentInput, AgentOutput, Session } from '../core/types';
+import type { AgentAdapter, AgentInput, AgentOutput, Session, buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
 import { getAppServerManager, type AgentEvent } from './codex-exec-server';
 
@@ -169,8 +169,14 @@ export class CodexAdapter implements AgentAdapter {
     const cwd = workingDir;
 
     let effectiveText = text;
+
+    // 附件信息注入：让 Agent 知道用户发送了附件（图片/文件/语音）及本地路径
+    if (input.attachments && input.attachments.length > 0) {
+      effectiveText = buildAttachmentHint(input.attachments) + '\n\n---\n\n' + effectiveText;
+    }
+
     if (session.codexMode === 'plan') {
-      effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${text}`
+      effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${effectiveText}`;
     }
 
     const isFresh = session.startFresh || !sessionAny.codexThreadId;

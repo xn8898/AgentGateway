@@ -3,9 +3,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { getDataDir } from './modules/utils/paths';
 import { loadProviders, getProviderConfig, startAnthropicProxy, saveActiveModel, sharedState } from './modules/proxy/anthropic-proxy';
 
-const CONFIG_PATH = path.join(import.meta.dir, 'config.json');
+const CONFIG_PATH = path.join(getDataDir(), 'config.json');
 
 // 加载配置
 const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');

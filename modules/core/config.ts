@@ -8,9 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 import type { ConfigManager, BotConfig, ProviderConfig } from './types';
-
-const HOME = process.env.HOME || '/Users/keyi';
-const PROJECT_DIR = path.join(HOME, 'Desktop', 'imtoagent');
+import { getDataDir, getSessionsDir } from '../utils/paths';
 
 /** 全局 config.json 结构 */
 interface RawConfig {
@@ -66,7 +64,7 @@ export class FileConfigManager implements ConfigManager {
   private loadAll(): void {
     // 加载主配置
     try {
-      const configPath = path.join(PROJECT_DIR, 'config.json');
+      const configPath = path.join(getDataDir(), 'config.json');
       const raw = fs.readFileSync(configPath, 'utf-8');
       this.rawConfig = JSON.parse(raw);
     } catch (e: any) {
@@ -76,7 +74,7 @@ export class FileConfigManager implements ConfigManager {
 
     // 加载 providers.json
     try {
-      const provPath = path.join(PROJECT_DIR, 'providers.json');
+      const provPath = path.join(getDataDir(), 'providers.json');
       const raw = fs.readFileSync(provPath, 'utf-8');
       const provData = JSON.parse(raw);
 
@@ -121,7 +119,7 @@ export class FileConfigManager implements ConfigManager {
 
   /** 加载 Bot 级别配置 */
   private _loadBotConfig(botName: string): void {
-    const sessionsDir = path.join(PROJECT_DIR, 'sessions');
+    const sessionsDir = getSessionsDir();
     const configPath = path.join(sessionsDir, `${botName}_config.json`);
 
     try {
@@ -139,7 +137,7 @@ export class FileConfigManager implements ConfigManager {
 
   /** 保存 Bot 级别配置 */
   private _saveBotConfig(botName: string, config: BotLevelConfig): void {
-    const sessionsDir = path.join(PROJECT_DIR, 'sessions');
+    const sessionsDir = getSessionsDir();
     const configPath = path.join(sessionsDir, `${botName}_config.json`);
 
     try {
@@ -260,7 +258,7 @@ export class FileConfigManager implements ConfigManager {
     if (this.rawConfig) {
       this.rawConfig.activeModel = modelSpec;
       try {
-        const configPath = path.join(PROJECT_DIR, 'config.json');
+        const configPath = path.join(getDataDir(), 'config.json');
         fs.writeFileSync(configPath, JSON.stringify(this.rawConfig, null, 2) + '\n');
       } catch (e: any) {
         console.error(`[Config] 保存全局 activeModel 失败: ${e.message}`);

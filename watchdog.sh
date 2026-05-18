@@ -1,8 +1,11 @@
 #!/bin/bash
 # IMtoAgent 看门狗 — 崩溃后自动重启
-CC_DIR="$HOME/Desktop/imtoagent"
-LOG="$CC_DIR/watchdog.log"
+IMTOAGENT_HOME="${IMTOAGENT_HOME:-$HOME/.imtoagent}"
+CC_DIR="$IMTOAGENT_HOME"
+LOG="$CC_DIR/logs/watchdog.log"
 SAFE_BACKUP="$CC_DIR/index.ts.safe"
+
+mkdir -p "$CC_DIR/logs"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
@@ -25,7 +28,7 @@ while true; do
 
   log "[START] 启动 IMtoAgent..."
   cd "$CC_DIR"
-  bun run index.ts >> "$LOG" 2>&1 &
+  IMTOAGENT_HOME="$CC_DIR" bun run index.ts >> "$LOG" 2>&1 &
   PID=$!
   log "[INFO] 进程 PID=$PID"
 

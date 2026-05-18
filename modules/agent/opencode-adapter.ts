@@ -6,8 +6,9 @@
 //   tool_call（服务端已执行），需要客户端发 "继续" 推进直到纯文本响应。
 // ================================================================
 
-import type { AgentAdapter, AgentInput, AgentOutput } from '../core/types';
+import type { AgentAdapter, AgentInput, AgentOutput, buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
+import { getDataDir } from '../utils/paths';
 
 // ================================================================
 // OpenCodeAdapter 上下文
@@ -161,8 +162,14 @@ export class OpenCodeAdapter implements AgentAdapter {
     const sessionAny = session as any;
 
     let effectiveText = text;
+
+    // 附件信息注入：让 Agent 知道用户发送了附件（图片/文件/语音）及本地路径
+    if (input.attachments && input.attachments.length > 0) {
+      effectiveText = buildAttachmentHint(input.attachments) + '\n\n---\n\n' + effectiveText;
+    }
+
     if (session.codexMode === 'plan') {
-      effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${text}`;
+      effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${effectiveText}`;
     }
 
     // 清理标记
@@ -243,7 +250,7 @@ export async function startOpenCodeServer(): Promise<void> {
   const child = Bun.spawn(
     ['opencode', 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
     {
-      cwd: process.env.HOME + '/Desktop/imtoagent',
+      cwd: getDataDir(),
       env: {
         ...process.env,
         // 环形通信无需真实 key，但 OpenCode 的 Anthropic provider 要求此变量存在

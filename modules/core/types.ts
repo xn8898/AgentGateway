@@ -59,10 +59,49 @@ export interface Session {
 // Agent 输入 / 输出
 // ================================================================
 
+/** 消息附件（图片/文件/语音等） */
+export interface MessageAttachment {
+  /** 类型：image | file | audio */
+  type: 'image' | 'file' | 'audio';
+  /** 本地下载后的文件路径 */
+  localPath: string;
+  /** 原始文件名（如有） */
+  filename?: string;
+  /** 飞书 image_key / file_key（调试用） */
+  sourceKey?: string;
+  /** MIME 类型 */
+  mimeType?: string;
+  /** 语音时长（毫秒） */
+  durationMs?: number;
+}
+
+/** 构建附件提示文本，注入到 Agent 输入消息中 */
+export function buildAttachmentHint(attachments: MessageAttachment[]): string {
+  return attachments.map((att, i) => {
+    const icon = att.type === 'image' ? '🖼️' : att.type === 'audio' ? '🎵' : '📎';
+    const typeLabel = att.type === 'image' ? '图片' : att.type === 'audio' ? '语音' : '文件';
+    const detail = att.filename ? ` (${att.filename})` : '';
+    const dur = att.durationMs ? ` [时长: ${Math.round(att.durationMs / 1000)}秒]` : '';
+
+    let hint = '';
+    if (att.type === 'image') {
+      hint = `\n> 💡 图片查看方式：使用 \`view_image\` 工具，传参 \`path="${att.localPath}"\``;
+    } else if (att.type === 'audio') {
+      hint = `\n> 💡 语音文件路径：\`${att.localPath}\`，可用语音识别工具处理`;
+    } else {
+      hint = `\n> 💡 文件路径：\`${att.localPath}\`，可直接读取内容`;
+    }
+
+    return `${icon} [用户消息附带${typeLabel} #${i + 1}]${detail}${dur}${hint}`;
+  }).join('\n\n');
+}
+
 /** Agent 输入 */
 export interface AgentInput {
   chatId: string;
   text: string;
+  /** 消息附带的附件/媒体（图片、文件、语音等，已下载到本地） */
+  attachments?: MessageAttachment[];
   session: Session;
   workingDir: string;
   systemPrompt?: string;
@@ -108,6 +147,8 @@ export interface AgentAdapter {
 export interface MessageContext {
   chatId: string;
   text: string;
+  /** 消息附带的附件/媒体 */
+  attachments?: MessageAttachment[];
   userId: string;
   workingDir: string;
   model: string;

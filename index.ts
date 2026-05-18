@@ -37,13 +37,14 @@ import { getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/
 import { initOpenCodeConfig } from './modules/agent/opencode';
 import { checkRateLimit, setRateLimitConfig } from './modules/rate-limiter';
 import { setCurrentBot } from './modules/bot-context';
+import { getDataDir, getSessionsDir, getSoulDir, getRestoreMarkerPath } from './modules/utils/paths';
 
 // ===== SDK 核心 =====
 import { AgentRuntime, FileSessionManager, DefaultErrorHandler, DefaultStatsTracker } from './modules/core';
 import { ClaudeAdapter } from './modules/agent/claude-adapter';
 import { CodexAdapter } from './modules/agent/codex-adapter';
 import { OpenCodeAdapter } from './modules/agent/opencode-adapter';
-import type { CallStats, Session, AgentAdapter } from './modules/core/types';
+import type { CallStats, Session, AgentAdapter, MessageAttachment } from './modules/core/types';
 import { startOpenCodeServer, stopOpenCodeServer } from './modules/agent/opencode-adapter';
 
 // ===== 全局活跃请求计数 =====
@@ -77,8 +78,7 @@ class CustomSessionManager {
   }
 
   private _sessionPath(chatId: string): string {
-    const home = process.env.HOME || '/Users/keyi';
-    return `${home}/Desktop/imtoagent/sessions/${this.botName}/${chatId}.memory.json`;
+    return path.join(getSessionsDir(), this.botName, `${chatId}.memory.json`);
   }
 
   async getOrCreate(chatId: string, userId: string): Promise<ChatSession> {
@@ -347,7 +347,7 @@ class Bot {
   }
 
   // ===== 灵魂管理 =====
-  _soulDir() { return `${process.env.HOME}/Desktop/imtoagent/soul/${this.name}`; }
+  _soulDir() { return getSoulDir(this.name); }
 
   _initSoul() {
     const dir = this._soulDir();
@@ -397,7 +397,7 @@ class Bot {
   }
 
   // ===== Bot 配置 =====
-  _botConfigPath() { return `${process.env.HOME}/Desktop/imtoagent/sessions/${this.name}/_bot.json`; }
+  _botConfigPath() { return path.join(getSessionsDir(), this.name, '_bot.json'); }
 
   _loadBotConfig() {
     try {
@@ -639,7 +639,7 @@ class Bot {
   }
 
   // ===== 消息处理 — SDK 完整接入 =====
-  async handleMessage(chatId: string, text: string, userId: string) {
+  async handleMessage(chatId: string, text: string, userId: string, attachments?: MessageAttachment[]) {
     activeRequests++;
     try {
       // 限流
@@ -670,7 +670,7 @@ class Bot {
 
       // SDK Runtime 处理
       await this.runtime.processMessage({
-        chatId, text, userId,
+        chatId, text, userId, attachments,
         workingDir: session.cwd || this.defaultCwd,
         model: this.activeModel,
         systemPrompt,
@@ -734,7 +734,7 @@ let _allBots: Bot[] = [];
 async function gracefulReload(reason: string) {
   console.log(`[Reload] 🔄 ${reason}`);
 
-  const sessionsDir = process.env.HOME + '/Desktop/imtoagent/sessions';
+  const sessionsDir = getSessionsDir();
   const botSnapshots: Record<string, { chats: { chatId: string; lastUsed: number }[] }> = {};
   try {
     if (fs.existsSync(sessionsDir)) {
@@ -758,7 +758,7 @@ async function gracefulReload(reason: string) {
   const backupPath = __filename + '.backup';
   try { fs.copyFileSync(__filename, backupPath); console.log(`[Reload] 已备份`); } catch {}
 
-  const marker = process.env.HOME + '/Desktop/imtoagent/sessions/.restore';
+  const marker = getRestoreMarkerPath();
   try { fs.writeFileSync(marker, JSON.stringify({ timestamp: Date.now(), reason, bots: botSnapshots })); } catch {}
 
   await stopAnthropicProxy();
@@ -767,7 +767,7 @@ async function gracefulReload(reason: string) {
   await new Promise(r => setTimeout(r, 1000));
 
   const child = Bun.spawn([process.execPath, 'run', __filename], {
-    env: { ...process.env, CC_RESTORE: '1' },
+    env: { ...process.env, IMTOAGENT_HOME: getDataDir(), CC_RESTORE: '1' },
     stdio: ['pipe', 'inherit', 'inherit'],
   });
   console.log(`[Reload] 新进程 PID=${child.pid}，等待启动验证...`);
@@ -803,7 +803,7 @@ process.on('SIGHUP', () => gracefulReload('SIGHUP'));
 // 主入口
 // ================================================================
 async function main() {
-  const CONFIG_PATH = path.join(__dirname, 'config.json');
+  const CONFIG_PATH = path.join(getDataDir(), 'config.json');
   const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
   const config = JSON.parse(raw);
   const DEFAULT_PROJECT_DIR = config.system?.defaultProjectDir || '/Users/keyi/Projects';
@@ -898,10 +898,13 @@ async function main() {
   console.log(`   Bots:`);
 
   for (const bot of bots) {
-    bot.im.start(async (chatId, text, userId) => {
-      console.log(`[${bot.name}] 收到 chat=${chatId.slice(-8)} "${text.slice(0, 80)}"`);
+    bot.im.start(async (chatId, text, userId, attachments) => {
+      const attDesc = attachments?.length
+        ? ` +${attachments.length} attachments(${attachments.map(a => a.type).join(',')})`
+        : '';
+      console.log(`[${bot.name}] 收到 chat=${chatId.slice(-8)} "${text.slice(0, 80)}"${attDesc}`);
       setCurrentBot({ botName: bot.name, caps: bot.im.getCapabilities(), modelAliases: bot.modelAliases });
-      bot.handleMessage(chatId, text, userId).catch((e: Error) =>
+      bot.handleMessage(chatId, text, userId, attachments).catch((e: Error) =>
         console.error(`[${bot.name}] handleMessage unhandled:`, e.message)
       );
     });
@@ -933,7 +936,7 @@ async function main() {
 
   // 重启后汇报
   if (process.env.CC_RESTORE === '1') {
-    const marker = process.env.HOME + '/Desktop/imtoagent/sessions/.restore';
+    const marker = getRestoreMarkerPath();
     const tryRestore = async () => {
       for (let attempt = 0; attempt < 5; attempt++) {
         try {

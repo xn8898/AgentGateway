@@ -3,6 +3,9 @@
 
 import { getCurrentBot } from '../bot-context';
 import { buildSystemPrompt, resolveCapabilities, DEFAULT_TERMINAL_CAPS } from '../prompt-builder';
+import * as path from 'path';
+import * as fs from 'fs';
+import { getDataDir } from '../utils/paths';
 
 // ================================================================
 // 配置（从 config.json 读取，不再硬编码）
@@ -25,8 +28,8 @@ function getConfig(): CodexProxyConfig {
   if (!_codexConfig) {
     // Fallback: 尝试从 config.json 读取
     try {
-      const fs = require('fs');
-      const configPath = process.env.HOME + '/Desktop/imtoagent/config.json';
+      
+      const configPath = path.join(getDataDir(), 'config.json');
       const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const codex = raw.codex || {};
       const providers = raw.providers || {};

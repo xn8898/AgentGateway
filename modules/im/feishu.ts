@@ -1,21 +1,27 @@
 // 飞书 IM 模块
 // 封装 Lark SDK：WS 长连接(含自动重连)、消息收发
-// 支持：纯文本、富文本卡片、图片、文件、表格
+// 支持：纯文本、富文本卡片、图片、文件、表格、语音、富文本帖子
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { IMCapabilities } from '../types';
 import type { UnifiedBlock } from '../capabilities';
+import type { MessageAttachment } from '../core/types';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as http from 'http';
-import * as https from 'https';
+import * as os from 'os';
+import { getDataDir } from '../utils/paths';
 
 export interface FeishuConfig {
   appId: string;
   appSecret: string;
 }
 
-export type FeishuMessageHandler = (chatId: string, text: string, userId: string) => Promise<void>;
+export type FeishuMessageHandler = (
+  chatId: string,
+  text: string,
+  userId: string,
+  attachments?: MessageAttachment[]
+) => Promise<void>;
 
 // 飞书消息卡片元素类型
 interface CardElement {
@@ -432,6 +438,7 @@ ${b.content || ''}`;
       cardMessage: true,
       fileSend: true,
       imageSend: true,
+      audioSend: true,
       buttonAction: true,
       maxTextLength: 30000,
     };
@@ -460,13 +467,82 @@ ${b.content || ''}`;
     const dispatcher = new Lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data: any) => {
         const { message } = data;
-        if (!message || message.message_type !== 'text') return;
-        const text = parseFeishuMessage(message.content || '');
-        if (!text) return;
+        if (!message) return;
+
         const chatId = message.chat_id;
         const senderId = message.sender_id;
         const userId = senderId?.open_id || senderId?.user_id || senderId?.union_id || chatId;
-        await this.messageHandler!(chatId, text, userId);
+        const msgType = message.message_type;
+
+        let text = '';
+        const attachments: MessageAttachment[] = [];
+
+        switch (msgType) {
+          case 'text':
+            text = parseFeishuMessage(message.content || '');
+            break;
+
+          case 'image': {
+            const content = JSON.parse(message.content || '{}');
+            const localPath = await this.downloadMessageResource(message.message_id, content.image_key, 'image');
+            if (localPath) {
+              attachments.push({ type: 'image', localPath, sourceKey: content.image_key, mimeType: 'image/webp' });
+              text = '[用户发送了一张图片]';
+            }
+            break;
+          }
+
+          case 'file': {
+            const content = JSON.parse(message.content || '{}');
+            const localPath = await this.downloadMessageResource(message.message_id, content.file_key, 'file');
+            if (localPath) {
+              attachments.push({ type: 'file', localPath, filename: content.file_name || 'unknown', sourceKey: content.file_key });
+              text = `[用户发送了文件: ${content.file_name || 'unknown'}]`;
+            }
+            break;
+          }
+
+          case 'audio': {
+            const content = JSON.parse(message.content || '{}');
+            const localPath = await this.downloadMessageResource(message.message_id, content.file_key, 'file');
+            if (localPath) {
+              attachments.push({ type: 'audio', localPath, sourceKey: content.file_key, durationMs: content.duration });
+              text = `[用户发送了语音消息 (${(content.duration || 0) / 1000}秒)]`;
+            }
+            break;
+          }
+
+          case 'post':
+            text = this.parsePostContent(message.content || '');
+            break;
+
+          case 'media':
+            text = '[用户发送了视频消息]';
+            break;
+
+          case 'sticker':
+            text = '[用户发送了表情]';
+            break;
+
+          case 'system':
+            return;
+
+          case 'interactive':
+            text = this.parseInteractiveContent(message.content || '');
+            break;
+
+          case 'merge_forward':
+            text = '[用户转发了合并消息]';
+            break;
+
+          default:
+            console.log(`[Feishu] 未处理的消息类型: ${msgType}`);
+            return;
+        }
+
+        if (!text && attachments.length === 0) return;
+
+        await this.messageHandler!(chatId, text, userId, attachments.length > 0 ? attachments : undefined);
       },
     });
 
@@ -558,22 +634,111 @@ ${b.content || ''}`;
     return lines.join('\n');
   }
 
-  // 下载文件/图片
-  private downloadFile(url: string): Promise<Buffer | null> {
-    return new Promise((resolve) => {
-      const get = url.startsWith('https') ? https.get : http.get;
-      get(url, { timeout: 30000 }, (res) => {
-        if (res.statusCode !== 200) { resolve(null); return; }
-        const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-      }).on('error', () => resolve(null));
-    });
+  // 下载文件/图片（使用 fetch，自动跟随重定向）
+  private async downloadFile(url: string): Promise<Buffer | null> {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      if (!resp.ok) {
+        console.error(`[Feishu] 下载失败: HTTP ${resp.status}, url=${url.slice(0, 80)}`);
+        return null;
+      }
+      const buf = await resp.arrayBuffer();
+      return Buffer.from(buf);
+    } catch (e) {
+      console.error(`[Feishu] 下载异常: ${(e as Error).message}, url=${url.slice(0, 80)}`);
+      return null;
+    }
   }
 
   // 下载图片（便捷别名）
   private async downloadImage(url: string): Promise<Buffer | null> {
     return this.downloadFile(url);
+  }
+
+  // ================================================================
+  // 消息附件接收（新增）
+  // ================================================================
+
+  /**
+   * 下载飞书消息中的附件到本地临时目录
+   * API: GET /open-apis/im/v1/messages/{message_id}/resources/{file_key}?type={type}
+   */
+  private async downloadMessageResource(
+    messageId: string,
+    fileKey: string,
+    type: 'image' | 'file'
+  ): Promise<string | null> {
+    try {
+      const token = await this.getAppToken();
+      const url = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=${type}`;
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!resp.ok) {
+        console.error(`[Feishu] 下载消息资源失败: HTTP ${resp.status}`);
+        return null;
+      }
+
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      const ext = type === 'image' ? '.webp' : '';
+      const prefix = type === 'image' ? 'feishu-img-' : 'feishu-file-';
+      const tmpPath = path.join(
+        os.tmpdir(),
+        `${prefix}${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`
+      );
+      fs.writeFileSync(tmpPath, buffer);
+      console.log(`[Feishu] 消息资源已下载: ${tmpPath} (${buffer.length} bytes)`);
+      return tmpPath;
+    } catch (e: any) {
+      console.error(`[Feishu] 下载消息资源异常: ${e.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 解析飞书富文本帖子（post）为 markdown
+   * content 结构：{ zh_cn: { title, content: [[{tag, text, ...}]] } }
+   */
+  private parsePostContent(content: string): string {
+    try {
+      const parsed = JSON.parse(content);
+      const locale = parsed.zh_cn || parsed.en_us || parsed;
+      if (!locale?.content) return content.trim();
+
+      const lines = locale.content.map((paragraph: any[]) => {
+        return paragraph.map((elem: any) => {
+          switch (elem.tag) {
+            case 'text':    return elem.text || '';
+            case 'a':       return `[${elem.text}](${elem.href})`;
+            case 'at':      return `@${elem.user_name || elem.user_id || 'unknown'}`;
+            case 'img':     return `[图片]`;
+            case 'emotion': return `[表情]`;
+            default:        return `[${elem.tag}]`;
+          }
+        }).join('');
+      }).join('\n');
+
+      const title = locale.title ? `**${locale.title}**\n\n` : '';
+      return title + lines;
+    } catch {
+      return content.trim();
+    }
+  }
+
+  /**
+   * 解析卡片交互回调（用户点击卡片按钮等）
+   * content 结构：{"action": {...}}
+   */
+  private parseInteractiveContent(content: string): string {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.action?.value) return parsed.action.value;
+      if (parsed.action?.option) return parsed.action.option;
+      return parsed.action?.tag || content.trim();
+    } catch {
+      return content.trim();
+    }
   }
 }
 
