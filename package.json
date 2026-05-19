@@ -1,8 +1,7 @@
 {
   "name": "imtoagent",
-  "version": "0.1.0",
-  "description": "IM ↔ Agent 统一网关 — 飞书/Telegram 对接 Claude Code/Codex/OpenCode",
-  "module": "index.ts",
+  "version": "0.2.0",
+  "description": "IM ↔ Agent 统一网关 — 飞书/Telegram/微信/企业微信对接 Claude Code/Codex/OpenCode",
   "type": "module",
   "bin": {
     "imtoagent": "./bin/imtoagent"
@@ -12,7 +11,8 @@
     "modules/",
     "bin/",
     "templates/",
-    "scripts/"
+    "scripts/",
+    "README.md"
   ],
   "scripts": {
     "postinstall": "bun run scripts/postinstall.ts",
@@ -23,5 +23,31 @@
     "@larksuiteoapi/node-sdk": "^1.62.0",
     "@wecom/aibot-node-sdk": "^1.0.7",
     "qrcode": "^1.5.4"
-  }
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/imtoagent.git"
+  },
+  "keywords": [
+    "im",
+    "gateway",
+    "claude-code",
+    "codex",
+    "opencode",
+    "feishu",
+    "telegram",
+    "wechat",
+    "wecom",
+    "ai-agent",
+    "bot-framework"
+  ],
+  "author": "Keyi",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/imtoagent/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/imtoagent#readme"
 }

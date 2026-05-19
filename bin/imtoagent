@@ -45,7 +45,13 @@ switch (command) {
   case 'help':
   case '--help':
   case '-h':
-    printHelp();
+    // 无命令 + 无配置 → 自动引导进入 setup
+    if (!command && !fs.existsSync(path.join(getDataDir(), 'config.json'))) {
+      console.log('⚠️  未检测到配置文件，请先完成初始配置\n');
+      await cmdSetup();
+    } else {
+      printHelp();
+    }
     break;
   default:
     console.error(`❌ 未知命令: ${command}`);

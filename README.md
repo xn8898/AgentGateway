@@ -1,146 +1,227 @@
-# IMtoAgent
+# imtoagent — IM ↔ Agent 统一网关
 
-> 让每个人通过 IM 拥有自己的智能体
+将飞书、Telegram、个人微信、企业微信对接到 Claude Code、Codex (GPT)、OpenCode 等 AI 编程 Agent。
 
-## 愿景
+一个网关，多个 IM，多种 Agent，统一端口代理。
 
-IMtoAgent 是 **IM ↔ 多品种成熟 Agent 系统的统一网关**。打破 Agent 局限于桌面终端和编程领域的现状——让用户通过飞书（及后续微信、钉钉等）的聊天框，就能调用各种 Agent 系统（Claude Code、Codex、ChatGPT、Dify 等）。
-
-**核心价值**：拆掉 Agent 必须坐在电脑前的墙。Agent 不应只是 IDE 插件或终端命令，它是手机上、聊天框里随时能 @ 的智能伙伴。
-
-## 设计理念
-
-IMtoAgent 本质上是一个**智能路由中间件**——把消息从 IM 正确路由到 AI 后端，再把回复原路返回。
-
-### 三层解耦
+## 架构
 
 ```
-        飞书 / 微信 / 钉钉（未来）
-             │
-    ┌────────┴────────┐
-    │   IM Module     │  ← getCapabilities() + 收发
-    │   (feishu.ts)   │
-    └────────┬────────┘
-             │
-    ┌────────┴────────┐
-    │  Prompt Builder │  ← IM 能力 → 系统提示词 + Soul 注入
-    │  (统一构建层)    │
-    └────────┬────────┘
-             │
-    ┌────────┴────────┐
-    │  Agent Module   │  ← claude.ts / codex.ts
-    │  (handleMessage) │     backend 字段决定，可插拔
-    └────────┬────────┘
-             │
-    ┌────────┴────────┐
-    │   Proxy Layer   │  ← :18899 统一端口
-    │   (协议转换)     │     providers.json 配供应商
-    └────────┬────────┘
-             │
-     DeepSeek / OpenAI / Anthropic ...
+飞书/Telegram/微信/企微 → IM Registry 工厂 → Bot 实例
+                                          → AgentRuntime SDK → Agent Adapter
+                                                             → 统一 Proxy (:18899) → 上游模型
 ```
 
-换 IM 只动 IM Module，换模型只配 providers.json，换 Agent 只加新 Module 类。
+### 已支持的 IM 适配器
 
-## 安装
+| IM | 连接方式 | 能力 |
+|----|----------|------|
+| **飞书** | WebSocket 长连接 + 自动重连 | 文本、代码块、卡片、文件、图片、语音、按钮 |
+| **Telegram** | 长轮询 + HTTP 代理 | 文本、文件、图片、语音 |
+| **个人微信** | iLink HTTP long-poll + QR 扫码 | 文本、图片、文件、语音（AES-128-ECB 加密） |
+| **企业微信** | HTTP Webhook 回调 + REST API | 文本、文件、图片 |
 
-### 方式一：npm 全局安装（推荐）
+### 已支持的 Agent 后端
+
+| 后端 | 对接方式 |
+|------|----------|
+| **Claude Code** | Claude Agent SDK spawn 子进程 |
+| **Codex** | app-server v2 (stdio JSON-RPC) |
+| **OpenCode** | HTTP API client |
+
+## 快速开始
+
+### 前置条件
+
+- **Bun** 运行时（≥1.0.0）：`brew install oven-sh/bun/bun`
+- **macOS / Linux**
+
+### 安装
+
+#### 方式一：npm 全局安装（推荐）
 
 ```bash
-npm install -g imtoagent     # 或 bun install -g imtoagent
-imtoagent setup              # 交互式配置向导
-imtoagent start              # 启动网关
+npm install -g imtoagent
 ```
 
-### 方式二：git clone 开发模式
+安装完成后自动检测是否需要初始配置，交互式终端会自动引导进入配置向导。
+
+#### 方式二：源码安装
 
 ```bash
-cd ~/Desktop
-git clone <repo> imtoagent
+git clone https://github.com/YOUR_USERNAME/imtoagent.git
 cd imtoagent
 bun install
-imtoagent setup              # 或手动编辑 config.json
-imtoagent start              # 启动
-# 或开发模式（自动重载）：
-bash dev.sh
+bun run bin/imtoagent setup
 ```
 
-## 目录结构
+### 首次配置
 
-```
-~/.imtoagent/                ← 数据目录（配置、日志、会话）
-├── config.json              ← Bot 配置（含密钥）
-├── providers.json           ← 模型供应商
-├── opencode.json            ← OpenCode 配置
-├── soul/                    ← 各 Bot 的灵魂文件
-├── sessions/                ← 会话数据
-└── logs/                    ← 运行日志
-
-~/Desktop/imtoagent/         ← 代码目录（项目本身）
-├── index.ts                 ← 主入口
-├── bin/imtoagent            ← CLI 命令入口
-├── modules/                 ← 核心模块
-├── templates/               ← 配置/灵魂模板
-└── scripts/                 ← 安装后脚本
+```bash
+imtoagent setup
 ```
 
-> **注意**：配置文件和运行数据统一存放在 `~/.imtoagent/`，代码目录只保留源代码。
+交互式配置向导引导你完成：
 
-## CLI 命令
+1. **配置 Bot** — 选择 IM 平台 + Agent 后端
+2. **配置模型供应商** — 添加 API 凭证（DeepSeek、Dashscope 等）
+3. **生成灵魂文件** — 为每个 Bot 创建 rules.md / identity.md 等
+4. **写入配置文件** — 自动生成 `~/.imtoagent/config.json`
 
-| 命令 | 功能 |
+#### 飞书 Bot 需要
+
+- 飞书 App ID（`cli_...`）
+- 飞书 App Secret
+- 飞书应用需开启：机器人、事件订阅、消息收发权限
+
+#### Telegram Bot 需要
+
+- Telegram Bot Token（从 @BotFather 获取）
+- 可选：代理地址（如 `http://127.0.0.1:7890`）
+
+#### 个人微信
+
+- 首次运行 `imtoagent start` 后自动弹出 QR 码
+- 用手机微信扫码完成绑定
+
+### 启动网关
+
+```bash
+imtoagent start     # 后台启动
+imtoagent status    # 查看运行状态
+imtoagent stop      # 停止网关
+```
+
+### 开机自启（macOS launchd）
+
+```bash
+# 创建 launchd 配置
+cat > ~/Library/LaunchAgents/com.imtoagent.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.imtoagent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/bun</string>
+        <string>run</string>
+        <string>/usr/local/lib/node_modules/imtoagent/index.ts</string>
+        <string>daemon</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/$USER/.imtoagent</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/$USER/.imtoagent/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/$USER/.imtoagent/logs/launchd.err.log</string>
+</dict>
+</plist>
+EOF
+
+# 加载
+launchctl load ~/Library/LaunchAgents/com.imtoagent.plist
+```
+
+### 常用命令
+
+| 命令 | 说明 |
 |------|------|
 | `imtoagent setup` | 交互式配置向导 |
 | `imtoagent start` | 后台启动网关 |
 | `imtoagent stop` | 停止网关 |
 | `imtoagent status` | 查看运行状态 |
-| `imtoagent restore` | 热重载（SIGHUP） |
-| `imtoagent daemon` | 前台守护模式（自动重启 + 日志） |
+| `imtoagent restore` | 热重载恢复 |
+| `imtoagent daemon` | 前台守护模式（适合 launchd/systemd 托管） |
 
-### 守护模式
+### 网关内建命令
 
-`imtoagent daemon` 是前台运行的守护进程，适合被进程管理器托管：
+在 IM 聊天中发送给 Bot：
 
-- 崩溃时自动重启（指数退避，最长 30s）
-- 收到 SIGTERM/SIGINT 时优雅关闭
-- 日志自动写入 `~/.imtoagent/logs/imtoagent.log`
+| 命令 | 说明 |
+|------|------|
+| `/help` | 帮助信息 |
+| `/status` | 网关状态 |
+| `/stats` | 使用统计 |
+| `/model` | 切换模型 |
+| `/providers` | 查看供应商 |
+| `/memory` | 查看记忆 |
+| `/soul` | 灵魂管理 |
+| `/reload` | 重新加载 |
+| `/clear` | 清除会话 |
+| `/mode` | 切换模式（权限/auto/plan） |
+| `/dir` | 切换工作目录 |
 
-**macOS launchd 示例：**
-```xml
-<key>ProgramArguments</key>
-<array>
-  <string>/opt/homebrew/bin/bun</string>
-  <string>run</string>
-  <string>/path/to/imtoagent/bin/imtoagent</string>
-  <string>daemon</string>
-</array>
+## 项目结构
+
+```
+imtoagent/
+├── index.ts                    # 入口 — IM Registry + Bot 构造 + Proxy 启动
+├── bin/imtoagent               # CLI 命令入口
+├── modules/
+│   ├── core/                   # SDK Core
+│   │   ├── AgentRuntime.ts     # 消息处理中枢
+│   │   ├── AgentAdapter.ts     # Agent 后端统一抽象
+│   │   ├── SessionManager.ts   # 会话持久化
+│   │   └── types.ts            # 类型定义
+│   ├── im/                     # IM 适配器
+│   │   ├── feishu.ts           # 飞书
+│   │   ├── telegram.ts         # Telegram
+│   │   ├── wechat.ts           # 个人微信
+│   │   └── wecom.ts            # 企业微信
+│   ├── agent/                  # Agent 后端
+│   │   ├── claude-adapter.ts   # Claude Code
+│   │   ├── codex-adapter.ts    # Codex
+│   │   └── opencode-adapter.ts # OpenCode
+│   ├── proxy/                  # 统一代理
+│   │   └── anthropic-proxy.ts  # :18899 Anthropic 格式代理
+│   ├── cli/                    # CLI
+│   │   └── setup.ts            # 交互式配置向导
+│   └── utils/
+│       └── paths.ts            # 路径解析 + 自动初始化
+├── scripts/
+│   └── postinstall.ts          # npm 安装后引导
+├── templates/                  # 配置模板
+│   ├── config.template.json
+│   ├── providers.template.json
+│   ├── opencode.template.json
+│   └── soul.template/
+└── README.md
 ```
 
-## 飞书命令
+## 数据目录
 
-| 命令 | 功能 |
-|------|------|
-| `/help` | 动态命令列表（按后端类型） |
-| `/status` | 运行状态 |
-| `/info` | 配置信息 |
-| `/stats` | Token/费用统计 |
-| `/model <spec>` | 切换模型（Bot 级，持久化） |
-| `/providers` | 供应商列表 |
-| `/clear` | 清空对话 |
-| `/dir <path>` | 切换目录 |
-| `/mode <mode>` | 权限模式（仅 Claude） |
-| `/reload` | 热重载 |
+所有运行时数据统一存储在 `~/.imtoagent/`：
 
-## 详细文档
+```
+~/.imtoagent/
+├── config.json          # 主配置（Bot + 供应商 + 系统）
+├── providers.json       # 模型供应商配置
+├── opencode.json        # OpenCode 配置
+├── sessions/            # 会话持久化
+├── logs/                # 运行日志
+└── soul/                # 灵魂文件（每 Bot 一个目录）
+    ├── ClaudeBot/
+    ├── CodexBot/
+    └── ...
+```
 
-参见 [.codex-docs/](./.codex-docs/)：
-- [ARCHITECTURE.md](./.codex-docs/ARCHITECTURE.md) — 完整架构、愿景、模块设计
-- [MESSAGE-FORMAT.md](./.codex-docs/MESSAGE-FORMAT.md) — 统一消息格式与能力降级
-- [COMMAND-SYSTEM.md](./.codex-docs/COMMAND-SYSTEM.md) — 三层命令体系
-- [SESSION-CONTINUITY.md](./.codex-docs/SESSION-CONTINUITY.md) — 会话连续性
-- [CLAUDEBOT-SESSION-PATTERN.md](./.codex-docs/CLAUDEBOT-SESSION-PATTERN.md) — ClaudeBot 参考实现
+## 开发
 
-## 依赖
+```bash
+bun install
+bun run index.ts          # 直接运行
+bun run bin/imtoagent setup  # 运行配置向导
+```
 
-- [Bun](https://bun.sh) 运行时
-- 飞书应用（开通"消息"和"事件订阅"）
+## License
+
+MIT
