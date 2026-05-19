@@ -569,6 +569,7 @@ export async function handleCodexRequest(
     if (reqMethod === 'POST' && (reqPath === '/v1/responses' || reqPath.includes('/responses'))) {
       const body = JSON.parse(reqBody);
       const chatReq = responsesToChat(body);
+      fs.writeFileSync('/tmp/codex-body.json', JSON.stringify(body, null, 2));
 
       // 🧠 动态注入灵魂 + IM 能力到系统 Prompt
       const ctx = getCurrentBot();

@@ -279,7 +279,7 @@ async handleMessage(chatId, text, session) {
 | 保留项 | 说明 |
 |--------|------|
 | `spawnCodexExec` / `spawnCodexResume` | 作为 fallback 路径完整保留 |
-| `codex-proxy.ts` (:18900) | 不修改，协议转换层不变 |
+| `codex-proxy.ts` (:18899 统一端口) | 不修改，协议转换层不变 |
 | `anthropic-proxy.ts` (:18899) | 不相关 |
 | `sessions/` 持久化格式 | 只增字段，不改结构 |
 | 现有的错误处理 catch 块 | 保留 exec 回退逻辑 |

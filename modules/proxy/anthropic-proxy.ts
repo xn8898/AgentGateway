@@ -710,6 +710,9 @@ const REQUEST_TIMEOUT = 120_000; // 120 秒
 function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
   const reqUrl = new URL(req.url || '/', 'http://localhost');
   const reqPath = reqUrl.pathname;
+  if (reqPath.includes('response') || reqPath.includes('/v1/')) {
+    require('fs').appendFileSync('/tmp/imtoagent-paths.log', req.method + ' ' + reqPath + '\n');
+  }
 
   // Codex 路径 → 转发到 codex handler
   if (reqPath === '/v1/responses' || reqPath.startsWith('/v1/responses')) {

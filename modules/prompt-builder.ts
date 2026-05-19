@@ -90,7 +90,20 @@ export function buildSystemPrompt(ctx: PromptBuilderContext): string {
   const capSection = buildCapabilityPrompt(caps);
   sections.push('# 当前对接 IM 能力\n\n' + capSection);
 
-  // 3. Soul
+  // 3. 网关运行日志（Agent 可主动查询）
+  sections.push(`# 网关运行日志
+
+网关运行日志: ~/.imtoagent/logs/imtoagent.log
+
+你可以通过查看日志来了解网关状态、排查问题、感知重启事件：
+- \`tail -n 30 ~/.imtoagent/logs/imtoagent.log\` — 最近 30 行
+- \`grep -i "restart\|reload\|shutdown\|SIGTERM" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — 重启/关闭记录
+- \`grep -i "error\|fail\|crash" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — 错误记录
+- \`grep -i "online\|connected\|disconnected" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Bot 连接状态
+
+注意：你启动后第一条消息的对话记忆可能已丢失（如果网关重启过），请先检查日志了解上下文。`);
+
+  // 4. Soul
   const soul = loadSoul(ctx.botName);
   if (soul) {
     sections.push('# 用户自定义指令 (IMtoAgent Soul)\n\n' + soul);

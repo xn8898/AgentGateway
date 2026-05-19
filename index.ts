@@ -5,20 +5,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// ===== 防止 fork 子进程 =====
-const LOCK_FILE = '/tmp/.imtoagent.lock';
-let isPrimary = true;
-try {
-  if (fs.existsSync(LOCK_FILE)) {
-    const pid = parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim());
-    try { process.kill(pid, 0); isPrimary = false; } catch { fs.unlinkSync(LOCK_FILE); }
-  }
-  if (isPrimary) fs.writeFileSync(LOCK_FILE, String(process.pid));
-} catch {}
-if (!isPrimary) process.exit(0);
-process.on('exit', () => {
-  try { require('fs').unlinkSync(LOCK_FILE); } catch {}
-});
+// ===== 重启信号文件路径（统一固定，不依赖 getDataDir） =====
+const RESTART_SIGNAL_PATH = path.join(process.env.HOME!, '.imtoagent', '.restart_requested');
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import {
@@ -29,8 +17,11 @@ import {
 } from './modules/proxy/anthropic-proxy';
 import { parseToBlocks } from './modules/capabilities';
 import { resolveCapabilities } from './modules/prompt-builder';
+import { getDataDir } from './modules/utils/paths';
 import { FeishuIMModule } from './modules/im/feishu';
 import { TelegramAdapter } from './modules/im/telegram';
+import { WeComIMModule } from './modules/im/wecom';
+import { WeChatIMModule } from './modules/im/wechat';
 import type { IMModule } from './modules/types';
 
 // ================================================================
@@ -57,6 +48,33 @@ registerIM('feishu', {
 registerIM('telegram', {
   create(cfg: BotConfig) {
     return new TelegramAdapter({ token: cfg.appId, proxy: (cfg as any).proxy });
+  },
+});
+
+// 注册企业微信
+registerIM('wecom', {
+  create(cfg: BotConfig) {
+    return new WeComIMModule({
+      corpId: cfg.appId,
+      corpSecret: cfg.appSecret,
+      agentId: (cfg as any).agentId,
+      token: (cfg as any).token,
+      encodingAESKey: (cfg as any).encodingAESKey,
+      receiveId: (cfg as any).receiveId,
+      webhookPort: (cfg as any).webhookPort,
+      webhookPath: (cfg as any).webhookPath,
+    });
+  },
+});
+
+// 注册个人微信
+registerIM('wechat', {
+  create(cfg: BotConfig) {
+    return new WeChatIMModule({
+      botId: (cfg as any).botId,
+      botToken: (cfg as any).botToken,
+      ilinkUserId: (cfg as any).ilinkUserId,
+    });
   },
 });
 import { startAnthropicProxy, stopAnthropicProxy } from './modules/proxy/anthropic-proxy';
@@ -692,7 +710,7 @@ class Bot {
       const systemPrompt = this.soul ? buildSystemPromptWithSoul(this.soul, this.name, this.im) : undefined;
 
       // SDK Runtime 处理
-      await this.runtime.processMessage({
+      const result = await this.runtime.processMessage({
         chatId, text, userId, attachments,
         workingDir: session.cwd || this.defaultCwd,
         model: this.activeModel,
@@ -702,6 +720,13 @@ class Bot {
         sendBlocks: async (blocks) => this.sendFormattedReplyDirect(chatId, blocks),
         imCaps: this.im.getCapabilities(),
       }, this.adapter, this.name);
+
+      // Agent 自主重启信号检测
+      if (result?.restart) {
+        setTimeout(async () => {
+          await gracefulReload(`Agent 请求重启: ${result.reason}`);
+        }, 200);
+      }
 
     } catch (e: any) {
       console.error(`[${this.name}] handleMessage 异常: ${e.message}`);
@@ -733,7 +758,15 @@ import { buildSystemPrompt } from './modules/prompt-builder';
 
 function buildSystemPromptWithSoul(soul: string, botName: string, imModule: IMModule | null): string {
   const base = buildSystemPrompt({ imModule, botName });
-  return soul ? `${base}\n\n${soul}` : base;
+
+  // 注入 Agent 自主重启能力说明（信号文件路径固定）
+  const restartInstruction = `\n\n## 网关重启能力\n\n如果你判断需要重启 IMtoAgent 网关（如配置变更、检测到异常状态需重置），请执行以下命令：\n\n\`\`\`bash\necho '{"reason": "<简短原因>", "timestamp": '"$(date +%s)"'}' > ${process.env.HOME}/.imtoagent/.restart_requested\n\`\`\`\n\n规则：\n- 该信号文件会被 Runtime 自动检测并消费，用户不会看到\n- 你的回复内容会先正常发送给用户，然后网关执行重启\n- 仅在确实需要时使用，不要随意触发\n- 如果你不需要重启，忽略此指令即可`;
+
+  let combined = `${base}${restartInstruction}`;
+  if (soul) {
+    combined += `\n\n---\n\n# 用户自定义指令 (IMtoAgent Soul)\n\n${soul}`;
+  }
+  return combined;
 }
 
 // ================================================================
@@ -757,6 +790,7 @@ let _allBots: Bot[] = [];
 async function gracefulReload(reason: string) {
   console.log(`[Reload] 🔄 ${reason}`);
 
+  // 1. 保存 session 快照（用于重启后通知）
   const sessionsDir = getSessionsDir();
   const botSnapshots: Record<string, { chats: { chatId: string; lastUsed: number }[] }> = {};
   try {
@@ -778,46 +812,19 @@ async function gracefulReload(reason: string) {
     }
   } catch {}
 
-  const backupPath = __filename + '.backup';
-  try { fs.copyFileSync(__filename, backupPath); console.log(`[Reload] 已备份`); } catch {}
-
+  // 2. 写 restore marker（新进程启动后读取并通知用户）
   const marker = getRestoreMarkerPath();
   try { fs.writeFileSync(marker, JSON.stringify({ timestamp: Date.now(), reason, bots: botSnapshots })); } catch {}
 
+  // 3. 优雅清理
   await stopAnthropicProxy();
   await stopOpenCodeServer();
   for (const bot of _allBots) bot.im.stop();
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise(r => setTimeout(r, 500));
 
-  const child = Bun.spawn([process.execPath, 'run', __filename], {
-    env: { ...process.env, IMTOAGENT_HOME: getDataDir(), CC_RESTORE: '1' },
-    stdio: ['pipe', 'inherit', 'inherit'],
-  });
-  console.log(`[Reload] 新进程 PID=${child.pid}，等待启动验证...`);
-
-  await new Promise(r => setTimeout(r, 5000));
-  try {
-    if (child.exitCode !== undefined) throw new Error(`新进程已退出，exitCode=${child.exitCode}`);
-    const net = require('net');
-    const checkPort = (port: number) => new Promise<void>((res, rej) => {
-      const s = net.createConnection({ port, host: '127.0.0.1' });
-      s.setTimeout(2000);
-      s.on('connect', () => { s.destroy(); res(); });
-      s.on('error', () => rej(new Error(`端口 ${port} 未监听`)));
-    });
-    await checkPort(18899);
-    console.log('[Reload] 新进程启动成功 ✅');
-    process.exit(0);
-  } catch (e: any) {
-    console.error(`[Reload] ❌ 新进程启动失败: ${e.message}`);
-    try { fs.copyFileSync(backupPath, __filename); } catch {}
-    try {
-      await startAnthropicProxy(18899);
-      console.log('[Reload] 旧服务已恢复 ✅');
-    } catch (e2: any) {
-      console.error(`[Reload] 恢复失败: ${e2.message}`);
-    }
-  }
+  // 4. 退出，daemon.sh 会自动拉起新进程
+  console.log('[Reload] 清理完成，退出中...');
+  process.exit(0);
 }
 
 process.on('SIGHUP', () => gracefulReload('SIGHUP'));
@@ -827,8 +834,37 @@ process.on('SIGHUP', () => gracefulReload('SIGHUP'));
 // ================================================================
 async function main() {
   const CONFIG_PATH = path.join(getDataDir(), 'config.json');
+
+  // 首次部署：配置文件不存在或未初始化
+  if (!fs.existsSync(CONFIG_PATH)) {
+    console.log('');
+    console.log('⚠️  首次部署：请先配置 imtoagent');
+    console.log('');
+    console.log(`   配置文件: ${CONFIG_PATH}`);
+    console.log('');
+    console.log('   1. 编辑 config.json，填入你的 API 凭证');
+    console.log('   2. 重新运行 imtoagent');
+    console.log('');
+    console.log('   参考模板: templates/config.template.json');
+    console.log('');
+    process.exit(0);
+  }
+
   const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
   const config = JSON.parse(raw);
+
+  // 检测是否是未编辑的模板（凭证还是占位符）
+  const hasPlaceholder = Object.values(config.providers || {}).some((p: any) =>
+    p.apiKey?.startsWith('YOUR_') || !p.apiKey
+  );
+  if (hasPlaceholder) {
+    console.log('');
+    console.log('⚠️  配置未完成：请将 config.json 中的 YOUR_* 替换为真实的 API 凭证');
+    console.log(`   配置文件: ${CONFIG_PATH}`);
+    console.log('');
+    process.exit(0);
+  }
+
   const DEFAULT_PROJECT_DIR = config.system?.defaultProjectDir || '/Users/keyi/Projects';
 
   if (config.modelAliases) sharedState.modelAliases = config.modelAliases;
@@ -840,6 +876,18 @@ async function main() {
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_AUTH_TOKEN;
   delete process.env.ANTHROPIC_MODEL;
+
+  // 清理残留的重启信号（上次崩溃遗留的旧信号，超过 1 分钟视为残留）
+  try {
+    if (fs.existsSync(RESTART_SIGNAL_PATH)) {
+      const old = JSON.parse(fs.readFileSync(RESTART_SIGNAL_PATH, 'utf-8'));
+      const age = Date.now() - (old.timestamp || 0);
+      if (age > 60000) {
+        console.log(`[Startup] 清理残留重启信号: ${old.reason}（${Math.floor(age / 1000)}s 前）`);
+        fs.unlinkSync(RESTART_SIGNAL_PATH);
+      }
+    }
+  } catch {}
 
   let proxyPort = 0;
   try { proxyPort = await startAnthropicProxy(18899); } catch (e: any) {
@@ -901,9 +949,17 @@ async function main() {
   for (const c of botCfgs) {
     const appId = c.appId || c.feishu?.appId || '';
     const appSecret = c.appSecret || c.feishu?.appSecret || '';
+    const imType = c.im || 'feishu';
+
+    // wechat 不需要 appId/appSecret，首次启动会触发 QR 扫码绑定
+    if (imType === 'wechat') {
+      bots.push(new Bot({ ...c, appId: appId || 'wechat-bot', appSecret }, config));
+      continue;
+    }
+
     // Telegram/其他非飞书 IM 只需要 appId，不需要 appSecret
-      const needsSecret = (c.im || 'feishu') === 'feishu';
-      if (!appId || (needsSecret && !appSecret) || appId.startsWith('YOUR_') || appSecret.startsWith('YOUR_')) {
+    const needsSecret = imType === 'feishu';
+    if (!appId || (needsSecret && !appSecret) || appId.startsWith('YOUR_') || appSecret.startsWith('YOUR_')) {
       console.log(`[Config] ⚠️  Bot "${c.name}" 凭证为占位符，跳过`);
       continue;
     }
@@ -957,6 +1013,32 @@ async function main() {
   };
   for (const bot of bots) updateWorkspace(bot);
 
+  // 启动时清除 Claude 后端 Bot 的旧 SDK session ID
+  // 避免 --resume 恢复重启前残留的 Claude CLI 子进程 session
+  for (const bot of bots) {
+    if (bot.backend !== 'claude') continue;
+    const botDir = path.join(getSessionsDir(), bot.name);
+    try {
+      if (fs.existsSync(botDir)) {
+        for (const file of fs.readdirSync(botDir)) {
+          if (!file.endsWith('.memory.json')) continue;
+          const fp = path.join(botDir, file);
+          try {
+            const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+            let changed = false;
+            if (data.sdkSessionId) { delete data.sdkSessionId; changed = true; }
+            if (data.backendSessionId) { delete data.backendSessionId; changed = true; }
+            if (data.metadata?.sdkSessionId) { delete data.metadata.sdkSessionId; changed = true; }
+            if (changed) {
+              fs.writeFileSync(fp, JSON.stringify(data, null, 2));
+              console.log(`[Startup] 已清除 ${bot.name}/${file} 的旧 SDK session ID`);
+            }
+          } catch {}
+        }
+      }
+    } catch (e: any) { console.error(`[Startup] 清除 ${bot.name} session: ${e.message}`); }
+  }
+
   // 重启后汇报
   if (process.env.CC_RESTORE === '1') {
     const marker = getRestoreMarkerPath();
@@ -991,6 +1073,10 @@ async function main() {
   // 优雅关闭
   async function gracefulShutdown(signal: string) {
     console.log(`[Shutdown] 收到 ${signal}，优雅关闭中...`);
+    // 先 abort 所有适配器的活跃子进程（如 Claude CLI）
+    for (const bot of bots) {
+      try { if (bot.adapter && typeof (bot.adapter as any).cleanup === 'function') (bot.adapter as any).cleanup(); } catch {}
+    }
     for (const bot of bots) bot.im.stop();
 
     // 立即关闭代理，让正在等待上游响应的请求快速失败

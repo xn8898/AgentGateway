@@ -71,7 +71,7 @@ imtoagent/
 │   │   └── codex-exec-server.ts  # ✅ app-server v2 客户端
 │   ├── proxy/
 │   │   ├── anthropic-proxy.ts    # ✅ Proxy :18899
-│   │   └── codex-proxy.ts        # ✅ Proxy :18900
+│   │   ├── codex-proxy.ts        # ✅ Codex 请求处理（:18899 统一端口）
 │   └── im/
 │       └── feishu.ts             # ✅ 飞书 IM 模块
 ├── sessions/
@@ -84,7 +84,7 @@ imtoagent/
 | 文件 | 职责 |
 |------|------|
 | `index.ts` | 主入口：飞书 WS、消息路由、命令系统、Bot 调度 |
-| `modules/proxy/codex-proxy.ts` | Codex Proxy :18900 + usage 累加器 |
+| `modules/proxy/codex-proxy.ts` | Codex Proxy 模块（请求处理，路由至 :18899 统一端口） |
 | `modules/proxy/anthropic-proxy.ts` | Claude Proxy :18899 |
 | `modules/agent/claude.ts` | Claude 模块（SDK 对接 + 会话循环） |
 | `modules/agent/codex.ts` | Codex 模块（app-server v2 优先 + exec CLI 回退） |

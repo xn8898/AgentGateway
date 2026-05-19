@@ -67,9 +67,27 @@ function extractToolCalls(msg: SDKMessage): Array<{ name: string; summary: strin
 export class ClaudeAdapter implements AgentAdapter {
   readonly name = 'Claude Agent SDK';
   private ctx: ClaudeAdapterContext;
+  private activeControllers: AbortController[] = [];
+  /** 单次调用最大超时（毫秒），0 = 不限制 */
+  static MAX_CALL_TIMEOUT_MS = 5 * 60 * 1000; // 5 分钟
 
   constructor(ctx: ClaudeAdapterContext) {
     this.ctx = ctx;
+  }
+
+  /**
+   * 清理所有活跃的子进程和请求。
+   * 在 gracefulShutdown 时由 index.ts 调用。
+   */
+  cleanup(): void {
+    const count = this.activeControllers.length;
+    if (count > 0) {
+      console.log(`[ClaudeAdapter] cleanup: aborting ${count} active request(s)`);
+      for (const ctrl of this.activeControllers) {
+        try { ctrl.abort(); } catch {}
+      }
+      this.activeControllers = [];
+    }
   }
 
   /**
@@ -81,6 +99,10 @@ export class ClaudeAdapter implements AgentAdapter {
   async handleMessage(input: AgentInput): Promise<AgentOutput> {
     const { text, session, workingDir, model, systemPrompt: overrideSystemPrompt } = input;
     const sessionAny = session as any; // 向后兼容：访问旧字段
+
+    // 创建 AbortController 并注册（用于超时 + shutdown 清理）
+    const abortCtrl = new AbortController();
+    this.activeControllers.push(abortCtrl);
 
     // 确定模型名
     const modelName = model.includes('/') ? model.slice(model.indexOf('/') + 1) : model;
@@ -111,7 +133,17 @@ export class ClaudeAdapter implements AgentAdapter {
       model: modelName,
       permissionMode: sessionAny.permissionMode || 'bypassPermissions',
       persistSession: true,
+      abortController: abortCtrl,
     };
+
+    // 超时保护：防止 Claude CLI 子进程无限运行
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    if (ClaudeAdapter.MAX_CALL_TIMEOUT_MS > 0) {
+      timeoutId = setTimeout(() => {
+        console.log(`[ClaudeAdapter] ⏰ 超时 (${ClaudeAdapter.MAX_CALL_TIMEOUT_MS / 1000}s)，中止请求`);
+        abortCtrl.abort();
+      }, ClaudeAdapter.MAX_CALL_TIMEOUT_MS);
+    }
 
     // System Prompt（优先使用传入的，否则自行构建）
     if (overrideSystemPrompt) {
@@ -129,12 +161,19 @@ export class ClaudeAdapter implements AgentAdapter {
     const sdkSessionId = shouldClear ? undefined : (session.metadata?.sdkSessionId || sessionAny.sdkSessionId);
     if (sdkSessionId) {
       queryOptions.resume = sdkSessionId;
+      console.log(`[ClaudeAdapter] resuming sdkSessionId=${sdkSessionId}`);
     } else {
-      queryOptions.sessionId = crypto.randomUUID();
+      const newId = crypto.randomUUID();
+      queryOptions.sessionId = newId;
+      // 立即写入 metadata，避免流中丢失
+      session.metadata.sdkSessionId = newId;
+      sessionAny.sdkSessionId = newId;
+      console.log(`[ClaudeAdapter] new sessionId=${newId}`);
     }
 
     console.log(`[ClaudeAdapter] query model=${modelName} cwd=${workingDir} resume=${!!sdkSessionId}`);
 
+    try {
     // 执行 Claude SDK 查询（流式）
     const q = query({
       prompt: [{
@@ -182,6 +221,7 @@ export class ClaudeAdapter implements AgentAdapter {
           numTurns: result.num_turns || 0,
         };
 
+        if (timeoutId) clearTimeout(timeoutId);
         const responseText = fullResponse || `✅ 已完成 (${toolCalls.length} 步操作)`;
 
         return {
@@ -197,5 +237,22 @@ export class ClaudeAdapter implements AgentAdapter {
       text: fullResponse || '✅ 完成',
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     };
+
+    } catch (err: any) {
+      if (timeoutId) clearTimeout(timeoutId);
+      // 如果是被 abort（超时或手动清理），提供有意义的消息
+      if (abortCtrl.signal.aborted) {
+        console.log(`[ClaudeAdapter] 请求已被中止 (${err.message || 'aborted'})`);
+        return {
+          text: '⚠️ 请求超时或已被取消，请稍后重试。',
+        };
+      }
+      throw err;
+    } finally {
+      // 清理当前 AbortController
+      const idx = this.activeControllers.indexOf(abortCtrl);
+      if (idx >= 0) this.activeControllers.splice(idx, 1);
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   }
 }

@@ -3,7 +3,7 @@
 // 支持：纯文本、富文本卡片、图片、文件、表格、语音、富文本帖子
 
 import * as Lark from '@larksuiteoapi/node-sdk';
-import type { IMCapabilities } from '../types';
+import type { IMModule, IMCapabilities, MessageHandler } from '../types';
 import type { UnifiedBlock } from '../capabilities';
 import type { MessageAttachment } from '../core/types';
 import * as fs from 'fs';
@@ -15,13 +15,6 @@ export interface FeishuConfig {
   appId: string;
   appSecret: string;
 }
-
-export type FeishuMessageHandler = (
-  chatId: string,
-  text: string,
-  userId: string,
-  attachments?: MessageAttachment[]
-) => Promise<void>;
 
 // 飞书消息卡片元素类型
 interface CardElement {
@@ -40,12 +33,12 @@ interface TokenEntry {
   expiresAt: number;  // 毫秒时间戳
 }
 
-export class FeishuIMModule {
+export class FeishuIMModule implements IMModule {
   private client: Lark.Client;
   private wsClient: any = null;
   private appId: string;
   private appSecret: string;
-  private messageHandler: FeishuMessageHandler | null = null;
+  private messageHandler: MessageHandler | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private running = false;
@@ -458,7 +451,7 @@ ${b.content || ''}`;
   // 生命周期
   // ================================================================
 
-  start(handler: FeishuMessageHandler) {
+  start(handler: MessageHandler) {
     this.messageHandler = handler;
     this.running = true;
     this._connect();
@@ -476,98 +469,103 @@ ${b.content || ''}`;
 
     const dispatcher = new Lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data: any) => {
-        const { message } = data;
-        if (!message) return;
+        try {
+          const { message } = data;
+          if (!message) return;
 
-        const chatId = message.chat_id;
-        const senderId = message.sender_id;
-        const userId = senderId?.open_id || senderId?.user_id || senderId?.union_id || chatId;
-        const msgType = message.message_type;
+          const chatId = message.chat_id;
+          const senderId = message.sender_id;
+          const userId = senderId?.open_id || senderId?.user_id || senderId?.union_id || chatId;
+          const msgType = message.message_type;
 
-        let text = '';
-        const attachments: MessageAttachment[] = [];
+          let text = '';
+          const attachments: MessageAttachment[] = [];
 
-        switch (msgType) {
-          case 'text':
-            text = parseFeishuMessage(message.content || '');
-            break;
+          switch (msgType) {
+            case 'text':
+              text = parseFeishuMessage(message.content || '');
+              break;
 
-          case 'image': {
-            const content = JSON.parse(message.content || '{}');
-            const resolved = await this._mediaResolver.resolveOne({
-              messageId: message.message_id,
-              resourceKey: content.image_key,
-              type: 'image',
-            });
-            if (resolved) {
-              attachments.push(resolved.attachment);
-              text = '[用户发送了一张图片]';
+            case 'image': {
+              const content = JSON.parse(message.content || '{}');
+              const resolved = await this._mediaResolver.resolveOne({
+                messageId: message.message_id,
+                resourceKey: content.image_key,
+                type: 'image',
+              });
+              if (resolved) {
+                attachments.push(resolved.attachment);
+                text = '[用户发送了一张图片]';
+              }
+              break;
             }
-            break;
+
+            case 'file': {
+              const content = JSON.parse(message.content || '{}');
+              const resolved = await this._mediaResolver.resolveOne({
+                messageId: message.message_id,
+                resourceKey: content.file_key,
+                type: 'file',
+                fileName: content.file_name,
+              });
+              if (resolved) {
+                attachments.push(resolved.attachment);
+                text = `[用户发送了文件: ${content.file_name || 'unknown'}]`;
+              }
+              break;
+            }
+
+            case 'audio': {
+              const content = JSON.parse(message.content || '{}');
+              const resolved = await this._mediaResolver.resolveOne({
+                messageId: message.message_id,
+                resourceKey: content.file_key,
+                type: 'file',  // 飞书音频也用 file 类型下载
+              });
+              if (resolved) {
+                // 补充音频时长（resolver 无法从飞书 API 获取 duration）
+                resolved.attachment.durationMs = content.duration;
+                attachments.push(resolved.attachment);
+                text = `[用户发送了语音消息 (${(content.duration || 0) / 1000}秒)]`;
+              }
+              break;
+            }
+
+            case 'post':
+              text = this.parsePostContent(message.content || '');
+              break;
+
+            case 'media':
+              text = '[用户发送了视频消息]';
+              break;
+
+            case 'sticker':
+              text = '[用户发送了表情]';
+              break;
+
+            case 'system':
+              return;
+
+            case 'interactive':
+              text = this.parseInteractiveContent(message.content || '');
+              break;
+
+            case 'merge_forward':
+              text = '[用户转发了合并消息]';
+              break;
+
+            default:
+              console.log(`[Feishu] 未处理的消息类型: ${msgType}`);
+              return;
           }
 
-          case 'file': {
-            const content = JSON.parse(message.content || '{}');
-            const resolved = await this._mediaResolver.resolveOne({
-              messageId: message.message_id,
-              resourceKey: content.file_key,
-              type: 'file',
-              fileName: content.file_name,
-            });
-            if (resolved) {
-              attachments.push(resolved.attachment);
-              text = `[用户发送了文件: ${content.file_name || 'unknown'}]`;
-            }
-            break;
-          }
+          if (!text && attachments.length === 0) return;
 
-          case 'audio': {
-            const content = JSON.parse(message.content || '{}');
-            const resolved = await this._mediaResolver.resolveOne({
-              messageId: message.message_id,
-              resourceKey: content.file_key,
-              type: 'file',  // 飞书音频也用 file 类型下载
-            });
-            if (resolved) {
-              // 补充音频时长（resolver 无法从飞书 API 获取 duration）
-              resolved.attachment.durationMs = content.duration;
-              attachments.push(resolved.attachment);
-              text = `[用户发送了语音消息 (${(content.duration || 0) / 1000}秒)]`;
-            }
-            break;
-          }
-
-          case 'post':
-            text = this.parsePostContent(message.content || '');
-            break;
-
-          case 'media':
-            text = '[用户发送了视频消息]';
-            break;
-
-          case 'sticker':
-            text = '[用户发送了表情]';
-            break;
-
-          case 'system':
-            return;
-
-          case 'interactive':
-            text = this.parseInteractiveContent(message.content || '');
-            break;
-
-          case 'merge_forward':
-            text = '[用户转发了合并消息]';
-            break;
-
-          default:
-            console.log(`[Feishu] 未处理的消息类型: ${msgType}`);
-            return;
+          await this.messageHandler!(chatId, text, userId, attachments.length > 0 ? attachments : undefined);
+        } catch (e: any) {
+          console.error(`[Feishu] 消息处理异常: ${e.message}`);
+          // 不抛异常，防止 SDK dispatcher 未处理 rejection 导致进程退出
         }
-
-        if (!text && attachments.length === 0) return;
-
-        await this.messageHandler!(chatId, text, userId, attachments.length > 0 ? attachments : undefined);
       },
     });
 

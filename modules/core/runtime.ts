@@ -14,6 +14,8 @@
 //   8. sessionManager.persist()
 // ================================================================
 
+import * as fs from 'fs';
+import * as path from 'path';
 import type {
   AgentAdapter,
   AgentInput,
@@ -26,6 +28,50 @@ import type {
 } from './types';
 import { parseToBlocks } from '../capabilities';
 import { DEFAULT_TERMINAL_CAPS } from '../prompt-builder';
+
+// ================================================================
+// Agent 自主重启 — 文件信号（固定路径，不依赖 dataDir 参数）
+// ================================================================
+const RESTART_SIGNAL_PATH = path.join(process.env.HOME!, '.imtoagent', '.restart_requested');
+const RESTART_COOLDOWN_MS = 5 * 60 * 1000; // 5 分钟
+let lastRestartTime = 0;
+
+interface RestartSignal {
+  reason: string;
+  timestamp: number;
+  botName?: string;
+}
+
+/**
+ * 检测重启信号文件是否存在且包含有效内容。
+ */
+function checkRestartSignal(): { triggered: boolean; reason: string } {
+  try {
+    if (!fs.existsSync(RESTART_SIGNAL_PATH)) return { triggered: false, reason: '' };
+    const raw = fs.readFileSync(RESTART_SIGNAL_PATH, 'utf-8').trim();
+    let signal: RestartSignal;
+    try {
+      signal = JSON.parse(raw);
+    } catch {
+      // 兼容纯文本格式
+      signal = { reason: raw, timestamp: Date.now() };
+    }
+    return { triggered: true, reason: signal.reason || '未知原因' };
+  } catch {
+    return { triggered: false, reason: '' };
+  }
+}
+
+/**
+ * 消费重启信号：读取后删除文件，确保每次信号只触发一次重启。
+ */
+function consumeRestartSignal(): { triggered: boolean; reason: string } {
+  const result = checkRestartSignal();
+  if (result.triggered) {
+    try { fs.unlinkSync(RESTART_SIGNAL_PATH); } catch {}
+  }
+  return result;
+}
 
 // ================================================================
 // AgentRuntime
@@ -62,12 +108,13 @@ export class AgentRuntime {
    * @param ctx 消息处理上下文
    * @param adapter Agent 适配器
    * @param botName Bot 名称（用于 session 隔离）
+   * @returns 如果 Agent 请求重启，返回 { restart: true, reason }；否则返回 { restart: false }
    */
   async processMessage(
     ctx: MessageContext,
     adapter: AgentAdapter,
     botName: string
-  ): Promise<void> {
+  ): Promise<{ restart: boolean; reason?: string }> {
     const startTime = Date.now();
     let attempt = 0;
     const maxRetries = 2;
@@ -150,7 +197,21 @@ export class AgentRuntime {
         // 持久化 session
         this.config.sessionManager.persist(botName, session);
 
-        return; // 成功，退出
+        // 检查 Agent 自主重启信号（在 reply 之后检测，确保消息已发送）
+        const signal = consumeRestartSignal();
+        if (signal.triggered) {
+          const now = Date.now();
+          if (now - lastRestartTime < RESTART_COOLDOWN_MS) {
+            const remaining = Math.ceil((RESTART_COOLDOWN_MS - (now - lastRestartTime)) / 1000);
+            console.log(`[Runtime] ⏳ Agent 请求重启被忽略（冷却中，${remaining}s 后重试）: ${signal.reason}`);
+          } else {
+            lastRestartTime = now;
+            console.log(`[Runtime] 🔄 Agent 请求重启: ${signal.reason}`);
+            return { restart: true, reason: signal.reason };
+          }
+        }
+
+        return { restart: false };
 
       } catch (error: any) {
         console.error(`[Runtime] 处理消息失败 (attempt ${attempt}): ${error.message}`);
@@ -193,7 +254,7 @@ export class AgentRuntime {
           this.config.sessionManager.persist(botName, session);
         } catch {}
 
-        return; // 不再重试
+        return { restart: false }; // 不再重试
       }
     }
   }

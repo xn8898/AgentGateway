@@ -140,5 +140,5 @@ export interface BotConfig {
   appSecret: string;
   cwd?: string;
   /** IM 平台类型（默认 feishu） */
-  im?: 'feishu' | 'telegram' | 'slack' | 'discord' | 'wechat';
+  im?: 'feishu' | 'telegram' | 'wecom' | 'wechat';
 }
