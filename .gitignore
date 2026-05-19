@@ -13,3 +13,14 @@ sessions/
 .DS_Store
 *.csv
 *.txt
+
+# 运行时配置（统一收敛到 ~/.imtoagent/）
+config.json
+providers.json
+opencode.json
+data/
+media/
+
+# 临时文件
+/tmp/
+*.pid

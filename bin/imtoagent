@@ -8,6 +8,7 @@
 //   imtoagent stop     — 停止网关
 //   imtoagent status   — 查看运行状态
 //   imtoagent restore  — 热重载恢复
+//   imtoagent daemon   — 前台守护模式（自动重启 + 日志）
 // ================================================================
 
 import * as fs from 'fs';
@@ -37,6 +38,9 @@ switch (command) {
   case 'restore':
     await cmdRestore();
     break;
+  case 'daemon':
+    await cmdDaemon();
+    break;
   case undefined:
   case 'help':
   case '--help':
@@ -62,6 +66,7 @@ imtoagent — IM ↔ Agent 统一网关
   imtoagent stop      停止网关
   imtoagent status    查看运行状态
   imtoagent restore   热重载恢复
+  imtoagent daemon    前台守护模式（自动重启 + 日志，适合 launchd/systemd 托管）
 
 数据目录: ${getDataDir()}
 `);
@@ -269,3 +274,120 @@ async function cmdRestore() {
     process.exit(1);
   }
 }
+
+// ================================================================
+// daemon — 前台守护模式（自动重启 + 日志 + 优雅退出）
+// ================================================================
+// 设计用途：
+//   - 前台运行，被 launchd / systemd 等进程管理器托管
+//   - 崩溃时自动重启（指数退避，最长 30s）
+//   - 收到 SIGTERM/SIGINT 时优雅关闭，不重启
+//   - 日志写入 ~/.imtoagent/logs/imtoagent.log
+// ================================================================
+async function cmdDaemon(): Promise<void> {
+  const dataDir = getDataDir();
+  const configPath = path.join(dataDir, 'config.json');
+
+  if (!fs.existsSync(configPath)) {
+    console.error('❌ 未找到配置文件，请先运行 "imtoagent setup"');
+    process.exit(1);
+  }
+
+  const logsDir = path.join(dataDir, 'logs');
+  if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+  const logFile = path.join(logsDir, 'imtoagent.log');
+
+  const pkgDir = path.resolve(import.meta.dirname, '..');
+  const indexFile = path.join(pkgDir, 'index.ts');
+
+  console.log(`🛡  imtoagent 守护模式`);
+  console.log(`   数据目录: ${dataDir}`);
+  console.log(`   日志文件: ${logFile}`);
+  console.log(`   按 Ctrl+C 停止\n`);
+
+  // 优雅退出标记
+  let shuttingDown = false;
+
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log('\n🛑 收到停止信号，正在关闭...');
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  let retryDelay = 0;
+  const MAX_RETRY_DELAY = 30_000; // 30s 上限
+
+  while (!shuttingDown) {
+    // 首次无延迟，之后指数退避
+    if (retryDelay > 0) {
+      console.log(`   等待 ${retryDelay / 1000}s 后重启...`);
+      await new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, retryDelay);
+        // 等待期间如果收到停止信号，立即退出
+        const check = setInterval(() => {
+          if (shuttingDown) {
+            clearTimeout(timer);
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
+      });
+      if (shuttingDown) break;
+    }
+
+    const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+    const child = Bun.spawn(['bun', 'run', indexFile], {
+      cwd: dataDir,
+      env: { ...process.env, IMTOAGENT_HOME: dataDir },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    const childPid = child.pid;
+    fs.writeFileSync(PID_FILE, String(childPid));
+    console.log(`[${new Date().toISOString()}] 🚀 启动网关 (PID=${childPid})`);
+
+    // 日志收集
+    const pumpStdout = (async () => {
+      for await (const chunk of child.stdout as any) {
+        const line = new TextDecoder().decode(chunk);
+        process.stdout.write(line);
+        logStream.write(line);
+      }
+    })().catch(() => {});
+
+    const pumpStderr = (async () => {
+      for await (const chunk of child.stderr as any) {
+        const line = new TextDecoder().decode(chunk);
+        process.stderr.write(line);
+        logStream.write(line);
+      }
+    })().catch(() => {});
+
+    // 等待子进程退出
+    const exitCode = await child.exited;
+    await Promise.allSettled([pumpStdout, pumpStderr]);
+    logStream.end();
+
+    try { fs.unlinkSync(PID_FILE); } catch {}
+
+    if (shuttingDown) break;
+
+    // 判断是否需要重启
+    if (exitCode === 0) {
+      console.log(`[${new Date().toISOString()}] ⏹  网关正常退出 (code=0)，不重启`);
+      break;
+    }
+
+    // 崩溃 → 指数退避重启
+    retryDelay = retryDelay === 0 ? 3_000 : Math.min(retryDelay * 2, MAX_RETRY_DELAY);
+    console.log(`[${new Date().toISOString()}] ⚠️  网关异常退出 (code=${exitCode})，${retryDelay / 1000}s 后重启`);
+  }
+
+  console.log('👋 守护进程已停止');
+}
+
