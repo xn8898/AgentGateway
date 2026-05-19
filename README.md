@@ -35,6 +35,13 @@
 
 - **Bun** 运行时（≥1.0.0）：`brew install oven-sh/bun/bun`
 - **macOS / Linux**
+- **至少一个 Agent 后端**（见下表，安装 imtoagent 前或后安装均可）
+
+| 后端 | 安装命令 |
+|------|----------|
+| Claude Code | `npm install -g @anthropic-ai/claude-agent-sdk` |
+| Codex | `npm install -g @openai/codex` |
+| OpenCode | `npm install -g opencode` |
 
 ### 安装
 

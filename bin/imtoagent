@@ -112,6 +112,31 @@ async function cmdStart() {
     process.exit(1);
   }
 
+  // 检查配置的后端是否已安装
+  try {
+    const { checkBackend } = await import('../modules/utils/backend-check');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    const missingBackends: string[] = [];
+    for (const bot of config.bots || []) {
+      if (bot.backend && ['claude', 'codex', 'opencode'].includes(bot.backend)) {
+        const info = checkBackend(bot.backend as any);
+        if (!info.installed && !missingBackends.includes(bot.backend)) {
+          missingBackends.push(bot.backend);
+        }
+      }
+    }
+    if (missingBackends.length > 0) {
+      console.error(`\n⚠️  以下后端已配置但未安装，网关启动后发消息会报错：`);
+      for (const b of missingBackends) {
+        console.error(`   ❌ ${b}`);
+      }
+      console.error(`\n请先安装缺失的后端，或运行 "imtoagent setup" 修改配置。\n`);
+      // 不强制退出，允许用户先启动网关再慢慢装后端
+    }
+  } catch {
+    // 检查失败不影响启动
+  }
+
   console.log('🚀 启动 imtoagent 网关...');
   console.log(`   数据目录: ${dataDir}`);
   console.log(`   配置文件: ${configPath}`);

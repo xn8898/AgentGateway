@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { getDataDir, getPkgDir, getTemplatePath, getTemplateSoulPath, getSoulDir } from '../utils/paths';
+import { checkAllBackends, formatBackendStatus, checkBackend } from '../utils/backend-check';
 
 // ================================================================
 // 主流程
@@ -46,8 +47,31 @@ export async function runSetupWizard(): Promise<void> {
     }
   }
 
+  // ===== Step 1.5: 检测后端安装状态 =====
+  console.log('📌 检测后端 Agent...\n');
+  const backendStatus = checkAllBackends();
+  console.log(formatBackendStatus(backendStatus));
+
+  const installedBackends = backendStatus.filter(b => b.installed);
+  if (installedBackends.length === 0) {
+    console.log('\n⚠️  未检测到任何后端 Agent。');
+    console.log('你需要先安装至少一个后端 Agent 才能使用 imtoagent。');
+    console.log('\n推荐安装:');
+    console.log('  npm install -g @anthropic-ai/claude-agent-sdk   # Claude Code');
+    console.log('  npm install -g @openai/codex                    # Codex');
+    console.log('  npm install -g opencode                         # OpenCode');
+    const proceed = await promptChoice('暂不配置 Bot，先退出?', ['Y', 'N']);
+    if (proceed === 'Y') {
+      console.log('\n👋 安装后端后请重新运行 "imtoagent setup"');
+      process.exit(0);
+    }
+    console.log('\n⚠️  你可以继续配置 Bot，但启动网关后发消息会报错，直到后端安装完成。\n');
+  } else {
+    console.log(`\n✅ 已安装 ${installedBackends.length} 个后端: ${installedBackends.map(b => b.label).join(', ')}\n`);
+  }
+
   // ===== Step 2: 配置 Bot =====
-  console.log('\n📌 Step 2: 配置 Bot\n');
+  console.log('📌 Step 2: 配置 Bot\n');
 
   const bots: any[] = existingConfig?.bots && (await promptChoice('保留现有 Bot?', ['Y', 'N'])) !== 'N'
     ? [...existingConfig.bots]
@@ -61,7 +85,27 @@ export async function runSetupWizard(): Promise<void> {
     if (!name) { addMore = false; continue; }
 
     const imType = await promptChoice('IM 平台', ['feishu', 'telegram']);
-    const backend = await promptChoice('后端', ['claude', 'codex', 'opencode']);
+
+    // 后端选项：优先推荐已安装的，未安装的标 ⚠️
+    const backendOptions = backendStatus.map(b => {
+      const label = b.installed ? `${b.label} (v${b.version})` : `${b.label} ⚠️ 未安装`;
+      return { value: b.type, label };
+    });
+    const backendLabels = backendOptions.map(o => o.label);
+    const backendChoice = await promptChoice('后端', backendLabels);
+    const backend = backendOptions.find(o => o.label === backendChoice)?.value || 'claude';
+    const isBackendInstalled = backendStatus.find(b => b.type === backend)?.installed;
+
+    if (!isBackendInstalled) {
+      const installCmd = backendStatus.find(b => b.type === backend)?.installHint || '';
+      console.log(`\n⚠️  ${backend} 尚未安装。请先运行：`);
+      console.log(`   ${installCmd}`);
+      const confirm = await promptChoice('仍要继续配置?', ['Y', 'N']);
+      if (confirm !== 'Y') {
+        addMore = (await promptChoice('继续添加其他 Bot?', ['Y', 'N'])) !== 'Y';
+        continue;
+      }
+    }
 
     let appId = '', appSecret = '', proxy = '', cwd = '';
 
