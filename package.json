@@ -1,10 +1,10 @@
 {
   "name": "imtoagent",
-  "version": "0.2.0",
-  "description": "IM ↔ Agent 统一网关 — 飞书/Telegram/微信/企业微信对接 Claude Code/Codex/OpenCode",
+  "version": "0.3.0",
+  "description": "IM \u2194 Agent \u7edf\u4e00\u7f51\u5173 \u2014 \u98de\u4e66/Telegram/\u5fae\u4fe1/\u4f01\u4e1a\u5fae\u4fe1\u5bf9\u63a5 Claude Code/Codex/OpenCode",
   "type": "module",
   "bin": {
-    "imtoagent": "./bin/imtoagent"
+    "imtoagent": "./bin/imtoagent.cjs"
   },
   "files": [
     "index.ts",
@@ -12,10 +12,13 @@
     "bin/",
     "templates/",
     "scripts/",
-    "README.md"
+    "README.md",
+    "bin/imtoagent.ts",
+    "bin/imtoagent.cjs",
+    "bin/imtoagent-real"
   ],
   "scripts": {
-    "postinstall": "bun run scripts/postinstall.ts",
+    "postinstall": "node scripts/postinstall.cjs",
     "start": "bun run index.ts"
   },
   "dependencies": {
@@ -29,7 +32,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/imtoagent.git"
+    "url": "git+https://github.com/YOUR_USERNAME/imtoagent.git"
   },
   "keywords": [
     "im",

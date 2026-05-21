@@ -51,18 +51,12 @@ registerIM('telegram', {
   },
 });
 
-// 注册企业微信
+// 注册企业微信（扫码绑定，无需预填凭证）
 registerIM('wecom', {
   create(cfg: BotConfig) {
     return new WeComIMModule({
-      corpId: cfg.appId,
-      corpSecret: cfg.appSecret,
-      agentId: (cfg as any).agentId,
-      token: (cfg as any).token,
-      encodingAESKey: (cfg as any).encodingAESKey,
-      receiveId: (cfg as any).receiveId,
-      webhookPort: (cfg as any).webhookPort,
-      webhookPath: (cfg as any).webhookPath,
+      botId: (cfg as any).botId,
+      secret: (cfg as any).secret,
     });
   },
 });
@@ -82,7 +76,7 @@ import { getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/
 import { initOpenCodeConfig } from './modules/agent/opencode';
 import { checkRateLimit, setRateLimitConfig } from './modules/rate-limiter';
 import { setCurrentBot } from './modules/bot-context';
-import { getDataDir, getSessionsDir, getSoulDir, getRestoreMarkerPath } from './modules/utils/paths';
+import { getDataDir, getSessionsDir, getSoulDir, getBotKey, getRestoreMarkerPath } from './modules/utils/paths';
 
 // ===== SDK 核心 =====
 import { AgentRuntime, FileSessionManager, DefaultErrorHandler, DefaultStatsTracker } from './modules/core';
@@ -281,6 +275,7 @@ type CommandHandler = (ctx: CommandCtx) => Promise<string> | string;
 // BotConfig
 // ================================================================
 interface BotConfig {
+  id?: string;
   name: string;
   appId: string;
   appSecret: string;
@@ -292,6 +287,7 @@ interface BotConfig {
 // Bot 类 — SDK 完整接入版
 // ================================================================
 class Bot {
+  id: string;
   name: string;
   backend: 'claude' | 'codex' | 'opencode';
   appId: string;
@@ -313,6 +309,7 @@ class Bot {
   adapter: AgentAdapter;
 
   constructor(cfg: BotConfig, globalConfig: any) {
+    this.id = cfg.id || cfg.name; // 后向兼容：无 id 时用 name
     this.name = cfg.name;
     this.backend = cfg.backend;
     this.appId = cfg.appId;
@@ -353,7 +350,7 @@ class Bot {
     this.im = imFactory.create(cfg);
 
     // ===== SDK 集成 =====
-    this.sessionManager = new CustomSessionManager(this.name, this.sessions);
+    this.sessionManager = new CustomSessionManager(this.id, this.sessions);
 
     const adapterCtx = {
       imModule: this.im,
@@ -388,7 +385,7 @@ class Bot {
   }
 
   // ===== 灵魂管理 =====
-  _soulDir() { return getSoulDir(this.name); }
+  _soulDir() { return getSoulDir(this.id); }
 
   _initSoul() {
     const dir = this._soulDir();
@@ -438,7 +435,7 @@ class Bot {
   }
 
   // ===== Bot 配置 =====
-  _botConfigPath() { return path.join(getSessionsDir(), this.name, '_bot.json'); }
+  _botConfigPath() { return path.join(getSessionsDir(), this.id, '_bot.json'); }
 
   _loadBotConfig() {
     try {
@@ -698,7 +695,7 @@ class Bot {
       const cmdResp = await this.tryHandleCommand(chatId, text, session);
       if (cmdResp !== null) {
         await this.reply(chatId, cmdResp);
-        this.sessionManager.persist(this.name, session);
+        this.sessionManager.persist(this.id, session);
         return;
       }
 
@@ -719,7 +716,7 @@ class Bot {
         sendProgress: async (t: string) => this.sendProgress(chatId, t),
         sendBlocks: async (blocks) => this.sendFormattedReplyDirect(chatId, blocks),
         imCaps: this.im.getCapabilities(),
-      }, this.adapter, this.name);
+      }, this.adapter, this.id);
 
       // Agent 自主重启信号检测
       if (result?.restart) {
@@ -1017,7 +1014,7 @@ async function main() {
   // 避免 --resume 恢复重启前残留的 Claude CLI 子进程 session
   for (const bot of bots) {
     if (bot.backend !== 'claude') continue;
-    const botDir = path.join(getSessionsDir(), bot.name);
+    const botDir = path.join(getSessionsDir(), bot.id);
     try {
       if (fs.existsSync(botDir)) {
         for (const file of fs.readdirSync(botDir)) {
@@ -1052,7 +1049,7 @@ async function main() {
           const summary = `🔄 IMtoAgent 已重启\n原因: ${reason}\n耗时: ${(uptime / 1000).toFixed(1)}s`;
           let sent = 0;
           for (const bot of bots) {
-            const snap = data.bots?.[bot.name];
+            const snap = data.bots?.[bot.id];
             if (!snap?.chats?.length) continue;
             for (const { chatId } of snap.chats) {
               try { await bot.reply(chatId, summary); sent++; break; }
@@ -1087,7 +1084,7 @@ async function main() {
     console.log('[Shutdown] 持久化所有 session...');
     for (const bot of bots) {
       for (const [chatId, session] of bot.sessions.entries()) {
-        try { bot.sessionManager.persist(bot.name, session); } catch {}
+        try { bot.sessionManager.persist(bot.id, session); } catch {}
       }
     }
     const DRAIN_TIMEOUT = 10_000;

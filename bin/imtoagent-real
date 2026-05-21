@@ -41,17 +41,30 @@ switch (command) {
   case 'daemon':
     await cmdDaemon();
     break;
-  case undefined:
-  case 'help':
-  case '--help':
-  case '-h':
-    // 无命令 + 无配置 → 自动引导进入 setup
-    if (!command && !fs.existsSync(path.join(getDataDir(), 'config.json'))) {
-      console.log('⚠️  未检测到配置文件，请先完成初始配置\n');
+  case undefined: {
+    // 无命令 → 没完成 setup 自动进向导，已完成显示帮助
+    const dataDir = getDataDir();
+    const configPath = path.join(dataDir, 'config.json');
+    let needsSetup = !fs.existsSync(configPath);
+    if (!needsSetup) {
+      try {
+        const raw = fs.readFileSync(configPath, 'utf-8');
+        // 如果配置里还有 YOUR_ 占位符，说明还没完成 setup
+        needsSetup = /YOUR_[A-Z_]+/.test(raw);
+      } catch { needsSetup = true; }
+    }
+    if (needsSetup) {
+      console.log('👋 欢迎使用 imtoagent，请先完成初始配置\n');
       await cmdSetup();
     } else {
       printHelp();
     }
+    break;
+  }
+  case 'help':
+  case '--help':
+  case '-h':
+    printHelp();
     break;
   default:
     console.error(`❌ 未知命令: ${command}`);

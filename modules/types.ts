@@ -134,6 +134,8 @@ export interface IMModule {
 // ================================================================
 
 export interface BotConfig {
+  /** 唯一标识（UUID，用于目录隔离，改名不影响） */
+  id?: string;
   name: string;
   backend: 'claude' | 'codex' | 'opencode';
   appId: string;

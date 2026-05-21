@@ -191,8 +191,13 @@ export function getLogsDir(): string {
   return path.join(getDataDir(), 'logs');
 }
 
-export function getSoulDir(botName: string): string {
-  return path.join(getDataDir(), 'soul', botName);
+/** 解析 Bot 唯一 key：优先用 id（UUID），后向兼容用 name */
+export function getBotKey(bot: { id?: string; name: string }): string {
+  return bot.id || bot.name;
+}
+
+export function getSoulDir(botKey: string): string {
+  return path.join(getDataDir(), 'soul', botKey);
 }
 
 export function getRestoreMarkerPath(): string {

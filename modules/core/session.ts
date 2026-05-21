@@ -85,24 +85,24 @@ export class FileSessionManager implements SessionManager {
   private cache = new Map<string, Map<string, Session>>();
 
   /** 获取 Session 文件路径 */
-  private sessionPath(botName: string, chatId: string): string {
+  private sessionPath(botKey: string, chatId: string): string {
     const sessionsBase = getSessionsDir();
-    const botDir = path.join(sessionsBase, botName);
+    const botDir = path.join(sessionsBase, botKey);
     return path.join(botDir, `${chatId}.memory.json`);
   }
 
   /** 确保目录存在 */
-  private ensureDir(botName: string): void {
+  private ensureDir(botKey: string): void {
     const sessionsBase = getSessionsDir();
-    const botDir = path.join(sessionsBase, botName);
+    const botDir = path.join(sessionsBase, botKey);
     if (!fs.existsSync(botDir)) {
       fs.mkdirSync(botDir, { recursive: true });
     }
   }
 
-  async getOrCreate(botName: string, chatId: string, userId: string): Promise<Session> {
+  async getOrCreate(botKey: string, chatId: string, userId: string): Promise<Session> {
     // 先查缓存
-    const botCache = this.cache.get(botName);
+    const botCache = this.cache.get(botKey);
     if (botCache) {
       const cached = botCache.get(chatId);
       if (cached) {
@@ -112,8 +112,8 @@ export class FileSessionManager implements SessionManager {
     }
 
     // 从文件加载
-    const filePath = this.sessionPath(botName, chatId);
-    this.ensureDir(botName);
+    const filePath = this.sessionPath(botKey, chatId);
+    this.ensureDir(botKey);
 
     let session: Session;
 
@@ -147,10 +147,10 @@ export class FileSessionManager implements SessionManager {
     }
 
     // 缓存
-    if (!this.cache.has(botName)) {
-      this.cache.set(botName, new Map());
+    if (!this.cache.has(botKey)) {
+      this.cache.set(botKey, new Map());
     }
-    this.cache.get(botName)!.set(chatId, session);
+    this.cache.get(botKey)!.set(chatId, session);
 
     return session;
   }
@@ -170,8 +170,8 @@ export class FileSessionManager implements SessionManager {
     };
   }
 
-  persist(botName: string, session: Session): void {
-    this.ensureDir(botName);
+  persist(botKey: string, session: Session): void {
+    this.ensureDir(botKey);
 
     // 写入时保持旧格式兼容：将 metadata 中的旧 ID 也写入顶层
     const output: Record<string, any> = {
@@ -203,7 +203,7 @@ export class FileSessionManager implements SessionManager {
     // metadata 完整保存
     output.metadata = session.metadata;
 
-    const filePath = this.sessionPath(botName, session.chatId);
+    const filePath = this.sessionPath(botKey, session.chatId);
     try {
       fs.writeFileSync(filePath, JSON.stringify(output, null, 2));
     } catch (e: any) {
@@ -211,15 +211,15 @@ export class FileSessionManager implements SessionManager {
     }
   }
 
-  delete(botName: string, chatId: string): void {
+  delete(botKey: string, chatId: string): void {
     // 清除缓存
-    const botCache = this.cache.get(botName);
+    const botCache = this.cache.get(botKey);
     if (botCache) {
       botCache.delete(chatId);
     }
 
     // 删除文件
-    const filePath = this.sessionPath(botName, chatId);
+    const filePath = this.sessionPath(botKey, chatId);
     try {
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -229,8 +229,8 @@ export class FileSessionManager implements SessionManager {
     }
   }
 
-  cleanupIdle(botName: string, timeoutMs: number): void {
-    const botCache = this.cache.get(botName);
+  cleanupIdle(botKey: string, timeoutMs: number): void {
+    const botCache = this.cache.get(botKey);
     if (!botCache) return;
 
     const now = Date.now();
@@ -248,8 +248,8 @@ export class FileSessionManager implements SessionManager {
     }
   }
 
-  listActive(botName: string): Session[] {
-    const botCache = this.cache.get(botName);
+  listActive(botKey: string): Session[] {
+    const botCache = this.cache.get(botKey);
     if (!botCache) return [];
     return Array.from(botCache.values());
   }

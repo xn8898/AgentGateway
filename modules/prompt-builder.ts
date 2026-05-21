@@ -37,8 +37,8 @@ export const DEFAULT_TERMINAL_CAPS: IMCapabilities = {
 // 从 ~/Desktop/imtoagent/soul/{botName}/ 按顺序加载
 // 加载顺序：rules → identity → profile → workspace → skills
 // ================================================================
-export function loadSoul(botName: string): string {
-  const soulDir = getSoulDir(botName);
+export function loadSoul(botKey: string): string {
+  const soulDir = getSoulDir(botKey);
   const soulOrder = ['rules.md', 'identity.md', 'profile.md', 'workspace.md', 'skills.md'];
   const parts: string[] = [];
   try {
@@ -64,7 +64,7 @@ export interface PromptBuilderContext {
   /** 当 imModule 不可用时，手动指定的能力 */
   caps?: IMCapabilities | null;
   /** Bot 名称，用于加载 Soul */
-  botName: string;
+  botKey: string;
   /** Agent 特有的额外系统提示（如工具使用指南、工作目录约束等） */
   agentInstructions?: string;
 }

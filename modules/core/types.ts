@@ -170,15 +170,15 @@ export interface MessageContext {
 /** Session 管理器 */
 export interface SessionManager {
   /** 获取或创建 Session */
-  getOrCreate(botName: string, chatId: string, userId: string): Promise<Session>;
+  getOrCreate(botKey: string, chatId: string, userId: string): Promise<Session>;
   /** 持久化 Session */
-  persist(botName: string, session: Session): void;
+  persist(botKey: string, session: Session): void;
   /** 删除 Session */
-  delete(botName: string, chatId: string): void;
+  delete(botKey: string, chatId: string): void;
   /** 清理空闲 Session */
-  cleanupIdle(botName: string, timeoutMs: number): void;
+  cleanupIdle(botKey: string, timeoutMs: number): void;
   /** 列出所有活跃 Session */
-  listActive(botName: string): Session[];
+  listActive(botKey: string): Session[];
 }
 
 /** 错误处理器 */
@@ -233,6 +233,8 @@ export interface ErrorContext {
 // ================================================================
 
 export interface BotConfig {
+  /** 唯一标识（UUID，用于目录/文件隔离，改名不影响） */
+  id?: string;
   name: string;
   backend: string; // 'claude' | 'codex' | 'opencode'
   appId: string;

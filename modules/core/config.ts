@@ -96,7 +96,7 @@ export class FileConfigManager implements ConfigManager {
     // 加载各 bot 的模型配置
     if (this.rawConfig?.bots) {
       for (const bot of this.rawConfig.bots) {
-        this._loadBotConfig(bot.name);
+        this._loadBotConfig(botKey);
       }
     }
   }
@@ -118,36 +118,36 @@ export class FileConfigManager implements ConfigManager {
   }
 
   /** 加载 Bot 级别配置 */
-  private _loadBotConfig(botName: string): void {
+  private _loadBotConfig(botKey: string): void {
     const sessionsDir = getSessionsDir();
-    const configPath = path.join(sessionsDir, `${botName}_config.json`);
+    const configPath = path.join(sessionsDir, `${botKey}_config.json`);
 
     try {
       if (fs.existsSync(configPath)) {
         const raw = fs.readFileSync(configPath, 'utf-8');
-        this.botConfigs.set(botName, JSON.parse(raw));
+        this.botConfigs.set(botKey, JSON.parse(raw));
       } else {
-        this.botConfigs.set(botName, {});
+        this.botConfigs.set(botKey, {});
       }
     } catch (e: any) {
-      console.error(`[Config] 加载 bot ${botName} 配置失败: ${e.message}`);
-      this.botConfigs.set(botName, {});
+      console.error(`[Config] 加载 bot ${botKey} 配置失败: ${e.message}`);
+      this.botConfigs.set(botKey, {});
     }
   }
 
   /** 保存 Bot 级别配置 */
-  private _saveBotConfig(botName: string, config: BotLevelConfig): void {
+  private _saveBotConfig(botKey: string, config: BotLevelConfig): void {
     const sessionsDir = getSessionsDir();
-    const configPath = path.join(sessionsDir, `${botName}_config.json`);
+    const configPath = path.join(sessionsDir, `${botKey}_config.json`);
 
     try {
       if (!fs.existsSync(sessionsDir)) {
         fs.mkdirSync(sessionsDir, { recursive: true });
       }
-      this.botConfigs.set(botName, config);
+      this.botConfigs.set(botKey, config);
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     } catch (e: any) {
-      console.error(`[Config] 保存 bot ${botName} 配置失败: ${e.message}`);
+      console.error(`[Config] 保存 bot ${botKey} 配置失败: ${e.message}`);
     }
   }
 
@@ -249,10 +249,10 @@ export class FileConfigManager implements ConfigManager {
   }
 
   /** 保存 Bot 活跃模型 */
-  saveActiveModel(botName: string, modelSpec: string): void {
-    const botLevel = this.botConfigs.get(botName) || {};
+  saveActiveModel(botKey: string, modelSpec: string): void {
+    const botLevel = this.botConfigs.get(botKey) || {};
     botLevel.activeModel = modelSpec;
-    this._saveBotConfig(botName, botLevel);
+    this._saveBotConfig(botKey, botLevel);
 
     // 同时更新全局配置
     if (this.rawConfig) {
@@ -267,9 +267,9 @@ export class FileConfigManager implements ConfigManager {
   }
 
   /** 保存 Bot 模型别名 */
-  saveModelAliases(botName: string, aliases: Record<string, string>): void {
-    const botLevel = this.botConfigs.get(botName) || {};
+  saveModelAliases(botKey: string, aliases: Record<string, string>): void {
+    const botLevel = this.botConfigs.get(botKey) || {};
     botLevel.modelAliases = aliases;
-    this._saveBotConfig(botName, botLevel);
+    this._saveBotConfig(botKey, botLevel);
   }
 }
