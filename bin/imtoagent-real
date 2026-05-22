@@ -158,7 +158,7 @@ async function cmdStart() {
   const pkgDir = path.resolve(import.meta.dirname, '..');
   const indexFile = path.join(pkgDir, 'index.ts');
 
-  const child = Bun.spawn(['bun', 'run', indexFile], {
+  const child = Bun.spawn([process.execPath, 'run', indexFile], {
     cwd: dataDir,
     env: { ...process.env, IMTOAGENT_HOME: dataDir },
     stdout: 'pipe',
@@ -384,7 +384,7 @@ async function cmdDaemon(): Promise<void> {
 
     const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
-    const child = Bun.spawn(['bun', 'run', indexFile], {
+    const child = Bun.spawn([process.execPath, 'run', indexFile], {
       cwd: dataDir,
       env: { ...process.env, IMTOAGENT_HOME: dataDir },
       stdout: 'pipe',

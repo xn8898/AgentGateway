@@ -107,7 +107,7 @@ async function promptText(label: string, defaultValue = ''): Promise<string> {
     while (true) {
       const key = await readKey();
 
-      if (key === KEY.ENTER) {
+      if (key === KEY.ENTER || key === '\n') {
         break;
       } else if (key === KEY.ESC) {
         process.stdout.write('\x1B[0K\n');
@@ -119,13 +119,13 @@ async function promptText(label: string, defaultValue = ''): Promise<string> {
         }
       } else if (key === KEY.UP || key === KEY.DOWN) {
         // 忽略方向键
-      } else if (key.length === 1 && key !== KEY.SPACE) {
-        // 普通字符（空格单独处理）
-        buf.push(key);
-        process.stdout.write(key);
       } else if (key === KEY.SPACE) {
         buf.push(' ');
         process.stdout.write(' ');
+      } else if (key.length >= 1 && !key.startsWith('\x1b')) {
+        // 普通字符 / 粘贴的多字符块（不含转义序列的文本）
+        buf.push(key);
+        process.stdout.write(key);
       }
     }
   } finally {
@@ -170,6 +170,91 @@ async function confirm(label: string, defaultYes = true): Promise<boolean | -1> 
     process.stdin.pause();
   }
 }
+
+// ================================================================
+// 供应商预设
+// ================================================================
+
+interface ProviderPreset {
+  name: string;
+  baseUrl: string;
+  format: 'openai' | 'anthropic';
+  models: string[];
+  hint?: string; // 额外说明
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    name: 'DashScope（阿里百炼）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    format: 'openai',
+    models: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
+  },
+  {
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    format: 'openai',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+  },
+  {
+    name: '智谱 AI（Zhipu）',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    format: 'openai',
+    models: ['glm-4-plus', 'glm-4-flash', 'glm-4'],
+  },
+  {
+    name: 'MiniMax',
+    baseUrl: 'https://api.minimax.io/v1',
+    format: 'openai',
+    models: ['MiniMax-M2.5', 'MiniMax-M1'],
+  },
+  {
+    name: '硅基流动（SiliconFlow）',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    format: 'openai',
+    models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'],
+  },
+  {
+    name: 'Moonshot（月之暗面）',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    format: 'openai',
+    models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+  },
+  {
+    name: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    format: 'openai',
+    models: ['gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
+    hint: '需要代理才能访问',
+  },
+  {
+    name: 'Anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    format: 'anthropic',
+    models: ['claude-sonnet-4-20250514', 'claude-haiku-4-20250514', 'claude-opus-4-20250514'],
+    hint: '需要代理才能访问',
+  },
+  {
+    name: 'Gemini（Google）',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    format: 'openai',
+    models: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+    hint: '需要代理才能访问',
+  },
+  {
+    name: 'xAI（Grok）',
+    baseUrl: 'https://api.x.ai/v1',
+    format: 'openai',
+    models: ['grok-3', 'grok-3-mini'],
+    hint: '需要代理才能访问',
+  },
+  {
+    name: 'Ollama（本地）',
+    baseUrl: 'http://localhost:11434/v1',
+    format: 'openai',
+    models: ['qwen2.5', 'llama3.2', 'deepseek-r1'],
+  },
+];
 
 // ================================================================
 // IM 平台配置定义
@@ -399,26 +484,76 @@ export async function runSetupWizard(): Promise<void> {
   let addingProviders = true;
   while (addingProviders) {
     console.log('--- 添加新供应商 ---\n');
-    const provName = await promptText('供应商名称 (如 deepseek, dashscope)');
-    if ((provName as any) === -1) { addingProviders = false; continue; }
-    if (!provName) { addingProviders = false; continue; }
 
-    if (providers[provName]) {
-      console.log(`⚠️  供应商 "${provName}" 已存在，将覆盖\n`);
+    // 选择预设 or 自定义
+    const presetOptions = PROVIDER_PRESETS.map(p => {
+      const tag = p.hint ? ` ${p.hint}` : '';
+      return `${p.name}${tag}`;
+    });
+    presetOptions.push('自定义...');
+
+    const presetIdx = await selectMenu('选择供应商', presetOptions);
+    if (presetIdx === -1) { addingProviders = false; continue; }
+
+    let provName: string, baseUrl: string, format: 'openai' | 'anthropic', models: string[];
+
+    if (presetIdx < PROVIDER_PRESETS.length) {
+      // 使用预设
+      const preset = PROVIDER_PRESETS[presetIdx];
+      provName = preset.name.split('（')[0].trim().toLowerCase(); // 取简短名称
+      baseUrl = preset.baseUrl;
+      format = preset.format;
+      models = [...preset.models];
+
+      console.log(`\n✅ 预设已加载:`);
+      console.log(`   名称: ${provName}`);
+      console.log(`   URL:  ${preset.baseUrl}`);
+      console.log(`   格式: ${preset.format}`);
+      console.log(`   模型: ${preset.models.join(', ')}\n`);
+
+      // 确认/修改简短名称
+      const nameEdit = await promptText('供应商名称（留空确认）', provName);
+      if ((nameEdit as any) === -1) continue;
+      provName = nameEdit || provName;
+
+      // 确认/修改 Base URL
+      const urlEdit = await promptText('Base URL', baseUrl);
+      if ((urlEdit as any) === -1) continue;
+      baseUrl = urlEdit || baseUrl;
+
+      // 确认/修改模型列表
+      const modelsEdit = await promptText('模型列表（逗号分隔）', models.join(', '));
+      if ((modelsEdit as any) === -1) continue;
+      if (modelsEdit) models = modelsEdit.split(',').map(s => s.trim()).filter(Boolean);
+
+      if (providers[provName]) {
+        console.log(`⚠️  供应商 "${provName}" 已存在，将覆盖\n`);
+      }
+    } else {
+      // 自定义
+      provName = await promptText('供应商名称 (如 deepseek, dashscope)');
+      if ((provName as any) === -1) { addingProviders = false; continue; }
+      if (!provName) { addingProviders = false; continue; }
+      if (providers[provName]) {
+        console.log(`⚠️  供应商 "${provName}" 已存在，将覆盖\n`);
+      }
+
+      baseUrl = await promptText('Base URL (如 https://api.deepseek.com/v1)');
+      if ((baseUrl as any) === -1) continue;
+      const modelsStr = await promptText('模型列表 (逗号分隔)');
+      if ((modelsStr as any) === -1) continue;
+      models = (modelsStr || '').split(',').map(s => s.trim()).filter(Boolean);
+
+      const formatIdx = await selectMenu('API 格式', ['openai', 'anthropic']);
+      if (formatIdx === -1) continue;
+      format = ['openai', 'anthropic'][formatIdx];
     }
 
-    const baseUrl = await promptText('Base URL (如 https://api.deepseek.com/v1)');
-    if ((baseUrl as any) === -1) continue;
+    // API Key（所有路径都需要）
     const apiKey = await promptText('API Key');
     if ((apiKey as any) === -1) continue;
-    const modelsStr = await promptText('模型列表 (逗号分隔，如 deepseek-v4-pro,deepseek-v4-flash)');
-    if ((modelsStr as any) === -1) continue;
-    const models = (modelsStr || '').split(',').map(s => s.trim()).filter(Boolean);
 
-    const formatIdx = await selectMenu('API 格式', ['openai', 'anthropic']);
-    if (formatIdx === -1) continue;
-    const format = ['openai', 'anthropic'][formatIdx];
-
+    // 价格（可选）
     const priceInput = await promptText('价格 (入/出 每百万 Token，如 0.55,2.19，留空跳过)');
     if ((priceInput as any) === -1) continue;
 
