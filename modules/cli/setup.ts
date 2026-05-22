@@ -367,10 +367,10 @@ export async function runSetupWizard(): Promise<void> {
     const existingIdx = bots.findIndex(b => b.name === botName);
     if (existingIdx >= 0) {
       bots[existingIdx] = bot;
-      console.log(`✅ 已替换: ${name}`);
+      console.log(`✅ 已替换: ${botName}`);
     } else {
       bots.push(bot);
-      console.log(`✅ 已添加: ${name}`);
+      console.log(`✅ 已添加: ${botName}`);
     }
 
     // 是否继续添加
