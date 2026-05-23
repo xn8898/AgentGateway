@@ -1,5 +1,11 @@
 # imtoagent 三种运行模式改造计划
 
+> ✅ **已完成** (2026-05-23) — 已发布 npm 0.3.6
+> - `start` 使用 `execSync` shell 后台命令绕过 Bun 事件循环
+> - `run` 使用 Bun.spawn + pipe stdio 实时日志
+> - `daemon` 使用 child_process.spawn + fd stdio + 崩溃自动重启
+> - CJS wrapper 从 spawnSync 改为 spawn + async exit
+
 ## 目标
 
 | 命令 | 模式 | 行为 | 适用场景 |
