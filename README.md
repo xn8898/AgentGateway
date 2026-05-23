@@ -4,12 +4,49 @@ Connect Feishu, Telegram, personal WeChat, and WeCom to AI coding agents like Cl
 
 One gateway, multiple IMs, multiple agents, unified port proxy.
 
+## 🚀 Quick Start (5 Minutes)
+
+### Step 1: Install
+
+```bash
+# Requires Bun runtime (macOS/Linux)
+brew install oven-sh/bun/bun
+
+# Install globally
+npm install -g imtoagent
+```
+
+### Step 2: Setup
+
+```bash
+imtoagent setup
+```
+
+The interactive wizard guides you through:
+1. Select IM platform (Feishu/Telegram/WeChat/WeCom)
+2. Enter Bot credentials
+3. Choose Agent backend (Claude Code/Codex/OpenCode)
+4. Configure model providers (API keys)
+5. Generate soul files for personality injection
+
+### Step 3: Start
+
+```bash
+imtoagent start
+imtoagent status    # verify it's running
+```
+
+That's it! Send `/help` to your Bot in the IM to see available commands.
+
+---
+
 ## Architecture
 
 ```
-飞书/Telegram/微信/企微 → IM Registry 工厂 → Bot 实例
-                                          → AgentRuntime SDK → Agent Adapter
-                                                             → 统一 Proxy (:18899) → 上游模型
+IM Platform (Feishu/Telegram/WeChat/WeCom)
+    → IM Registry Factory → Bot Instance
+        → AgentRuntime SDK → Agent Adapter
+            → Unified Proxy (:18899) → Upstream Models
 ```
 
 ### Supported IM Adapters
@@ -43,63 +80,97 @@ One gateway, multiple IMs, multiple agents, unified port proxy.
 | Codex | `npm install -g @openai/codex` |
 | OpenCode | `npm install -g opencode` |
 
-### Installation
+## Installation Methods
 
-#### Method 1: npm global install (recommended)
+### Method 1: npm Global Install (Recommended)
 
 ```bash
 npm install -g imtoagent
 ```
 
-After installation, it automatically checks whether initial configuration is needed. An interactive terminal will guide you through the setup wizard.
+This is the simplest approach. After installation, the post-install script checks if you need initial configuration.
 
-#### Method 2: Source install
+### Method 2: Source Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/imtoagent.git
+git clone https://github.com/k3yiac/imtoagent.git
 cd imtoagent
 bun install
 bun run bin/imtoagent setup
 ```
 
-### First-Time Configuration
+Use this for development or if you want to modify the source code.
+
+### Prerequisites
+
+- **Bun** runtime (≥1.0.0): `brew install oven-sh/bun/bun`
+- **macOS or Linux**
+- **At least one Agent backend** installed (see below)
+
+### Agent Backend Installation
+
+| Backend | Install Command |
+|---------|----------------|
+| Claude Code | `npm install -g @anthropic-ai/claude-agent-sdk` |
+| Codex | `npm install -g @openai/codex` |
+| OpenCode | `npm install -g opencode` |
+
+You can install backends before or after installing imtoagent.
+
+## Configuration
+
+### First-Time Setup
 
 ```bash
 imtoagent setup
 ```
 
-The interactive setup wizard guides you through:
+The interactive wizard will guide you through:
 
-1. **Configure Bot** — Select IM platform + Agent backend
+1. **Configure Bot** — Select IM platform + Agent backend combination
 2. **Configure Model Providers** — Add API credentials (DeepSeek, Dashscope, etc.)
-3. **Generate Soul Files** — Create rules.md / identity.md etc. for each Bot
+3. **Generate Soul Files** — Create personality files (rules.md, identity.md, etc.)
 4. **Write Config Files** — Auto-generate `~/.imtoagent/config.json`
 
-#### Feishu Bot Requirements
+### Platform-Specific Requirements
 
-- Feishu App ID (`cli_...`)
-- Feishu App Secret
-- Feishu app must enable: Bot, Event Subscription, Message Send/Receive permissions
+#### Feishu
+- **App ID** (`cli_...`) and **App Secret**
+- Enable in Feishu app console: Bot, Event Subscription, Message Send/Receive permissions
 
-#### Telegram Bot Requirements
-
-- Telegram Bot Token (obtain from @BotFather)
-- Optional: Proxy address (e.g., `http://127.0.0.1:7890`)
+#### Telegram
+- **Bot Token** from @BotFather
+- Optional: HTTP proxy (e.g., `http://127.0.0.1:7890`)
 
 #### Personal WeChat
+- QR code automatically appears on first `imtoagent start`
+- Scan with WeChat on your phone to complete binding
 
-- QR code automatically pops up on first run of `imtoagent start`
-- Scan with your phone's WeChat to complete binding
+#### WeCom (Enterprise WeChat)
+- Webhook callback URL configuration
+- REST API credentials
 
-### Start the Gateway
+## Running the Gateway
 
-```bash
-imtoagent start     # Start in background
-imtoagent status    # Check running status
-imtoagent stop      # Stop the gateway
-```
+### Basic Commands
 
-### Auto-Start on Boot (macOS launchd)
+| Command | Description |
+|---------|-------------|
+| `imtoagent start` | Start gateway in background |
+| `imtoagent stop` | Stop the gateway |
+| `imtoagent status` | Check running status |
+| `imtoagent restore` | Hot reload recovery |
+| `imtoagent daemon` | Foreground daemon mode (crash auto-restart) |
+
+### Running Modes
+
+- **`start`** — Background mode, terminal returns immediately
+- **`run`** — Foreground mode, real-time logs, Ctrl+C to stop
+- **`daemon`** — Foreground with auto-restart on crash
+
+### Auto-Start on Boot
+
+#### macOS (launchd)
 
 ```bash
 # Create launchd configuration
@@ -134,36 +205,54 @@ cat > ~/Library/LaunchAgents/com.imtoagent.plist << 'EOF'
 </plist>
 EOF
 
-# Load
+# Load the service
 launchctl load ~/Library/LaunchAgents/com.imtoagent.plist
 ```
 
-### Common Commands
+#### Linux (systemd)
+
+Create `/etc/systemd/system/imtoagent.service`:
+
+```ini
+[Unit]
+Description=IMtoAgent Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/home/youruser/.imtoagent
+ExecStart=/usr/bin/bun run /usr/lib/node_modules/imtoagent/index.ts daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable imtoagent
+systemctl start imtoagent
+```
+
+## Using the Gateway
+
+### Built-In Commands
+
+Send these to your Bot in the IM chat:
 
 | Command | Description |
-|------|------|
-| `imtoagent setup` | Interactive setup wizard |
-| `imtoagent start` | Start gateway in background |
-| `imtoagent stop` | Stop the gateway |
-| `imtoagent status` | Check running status |
-| `imtoagent restore` | Hot reload recovery |
-| `imtoagent daemon` | Foreground daemon mode (suitable for launchd/systemd) |
-
-### Built-In Gateway Commands
-
-Send to the Bot in IM chat:
-
-| Command | Description |
-|------|------|
-| `/help` | Help information |
+|---------|-------------|
+| `/help` | Show available commands |
 | `/status` | Gateway status |
 | `/stats` | Usage statistics |
-| `/model` | Switch model |
-| `/providers` | View providers |
-| `/memory` | View memory |
+| `/model` | Switch AI model |
+| `/providers` | View model providers |
+| `/memory` | View memory status |
 | `/soul` | Soul management |
-| `/reload` | Reload |
-| `/clear` | Clear session |
+| `/reload` | Reload configuration |
+| `/clear` | Clear conversation session |
 | `/mode` | Switch mode (permission/auto/plan) |
 | `/dir` | Switch working directory |
 
@@ -206,27 +295,66 @@ imtoagent/
 
 ## Data Directory
 
-All runtime data is stored centrally in `~/.imtoagent/`:
+All runtime data is stored in `~/.imtoagent/`:
 
 ```
 ~/.imtoagent/
 ├── config.json          # Main config (Bot + providers + system)
-├── providers.json       # Model provider config
-├── opencode.json        # OpenCode config
-├── sessions/            # Session persistence
+├── providers.json       # Model provider configurations
+├── opencode.json        # OpenCode-specific config
+├── sessions/            # Conversation persistence
 ├── logs/                # Runtime logs
-└── soul/                # Soul files (one directory per Bot)
+└── soul/                # Bot personality files
     ├── ClaudeBot/
     ├── CodexBot/
-    └── ...
+    └── ...              # One directory per Bot
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Gateway won't start**
+- Check `imtoagent status` for details
+- Verify config with `cat ~/.imtoagent/config.json`
+- Check logs: `cat ~/.imtoagent/logs/*.log`
+
+**Setup wizard stuck**
+- Ensure terminal supports interactive input
+- Try running in a standard terminal (not IDE integrated)
+
+**Bot not responding in IM**
+- Verify credentials in config.json
+- Check IM platform permissions (Feishu events, Telegram webhook, etc.)
+- Ensure the gateway is running: `imtoagent status`
+
+**Port 18899 already in use**
+- Another service is using the proxy port
+- Kill the existing process or change port in config
+
+### Getting Help
+
+- Check logs: `~/.imtoagent/logs/`
+- Run `imtoagent status` for runtime information
+- Open an issue on GitHub with logs attached
 ```
 
 ## Development
 
 ```bash
+# Clone and setup development environment
+git clone https://github.com/k3yiac/imtoagent.git
+cd imtoagent
 bun install
-bun run index.ts          # Run directly
-bun run bin/imtoagent setup  # Run setup wizard
+
+# Run directly
+bun run index.ts
+
+# Run setup wizard
+bun run bin/imtoagent setup
+
+# Run CLI from source
+bun run bin/imtoagent status
 ```
 
 ## License
