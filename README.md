@@ -9,7 +9,7 @@ One gateway, multiple IMs, multiple agents, unified port proxy.
 ### Step 1: Install (One Command)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/install.sh | bash
+curl -fsSL https://imtoagent.github.io/imtoagent/install.sh | bash
 ```
 
 This script detects your environment, installs bun if needed, installs imtoagent, and guides you through setup.
@@ -86,7 +86,7 @@ IM Platform (Feishu/Telegram/WeChat/WeCom)
 ### Method 1: One-Click Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/install.sh | bash
+curl -fsSL https://imtoagent.github.io/imtoagent/install.sh | bash
 ```
 
 This script does everything automatically:
