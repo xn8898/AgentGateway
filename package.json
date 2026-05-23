@@ -32,7 +32,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/imtoagent.git"
+    "url": "https://github.com/imtoagent/imtoagent.git",
+    "directory": ""
   },
   "keywords": [
     "im",
@@ -50,7 +51,7 @@
   "author": "Keyi",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/imtoagent/issues"
+    "url": "https://github.com/imtoagent/imtoagent/issues"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/imtoagent#readme"
+  "homepage": "https://github.com/imtoagent/imtoagent#readme"
 }
