@@ -19,26 +19,26 @@ try {
 
   if (configExists) {
     console.log("");
-    console.log("✅  imtoagent 升级成功！");
+    console.log("✅  imtoagent upgraded successfully!");
     console.log("");
-    console.log("   数据目录: " + DATA_DIR);
-    console.log("   配置文件保持不变，无需重新配置。");
-    console.log('   运行 "imtoagent start" 启动网关。');
+    console.log("   Data directory: " + DATA_DIR);
+    console.log("   Configuration file kept as-is, no need to reconfigure.");
+    console.log('   Run "imtoagent start" to start the gateway.');
     console.log("");
   } else {
     console.log("");
-    console.log("🎉  imtoagent 安装成功！");
+    console.log("🎉  imtoagent installed successfully!");
     console.log("");
-    console.log("   首次使用，请运行以下命令完成初始化配置：");
+    console.log("   For first-time use, run the following commands to complete initial setup:");
     console.log("");
-    console.log('     imtoagent setup      # 交互式配置向导');
-    console.log('     imtoagent            # 无命令时自动检测，未配置也会进入向导');
+    console.log('     imtoagent setup      # Interactive configuration wizard');
+    console.log('     imtoagent            # Auto-detects when run with no command; enters wizard if not configured');
     console.log("");
-    console.log("   配置完成后启动网关：");
+    console.log("   After configuration, start the gateway:");
     console.log("");
     console.log("     imtoagent start");
     console.log("");
   }
 } catch (e) {
-  // 静默失败，不影响安装
+  // Silently fail, do not affect installation
 }

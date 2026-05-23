@@ -81,9 +81,9 @@ export interface MessageAttachment {
 export function buildAttachmentHint(attachments: MessageAttachment[]): string {
   return attachments.map((att, i) => {
     const icon = att.type === 'image' ? '🖼️' : att.type === 'audio' ? '🎵' : '📎';
-    const typeLabel = att.type === 'image' ? '图片' : att.type === 'audio' ? '语音' : '文件';
+    const typeLabel = att.type === 'image' ? 'Image' : att.type === 'audio' ? 'Voice' : 'File';
     const detail = att.filename ? ` (${att.filename})` : '';
-    const dur = att.durationMs ? ` [时长: ${Math.round(att.durationMs / 1000)}秒]` : '';
+    const dur = att.durationMs ? ` [Duration: ${Math.round(att.durationMs / 1000)}s]` : '';
     const mimeInfo = att.mimeType ? ` [${att.mimeType}]` : '';
 
     // 优先使用预计算的提示（由 MediaResolver 按文件类型生成）
@@ -91,15 +91,15 @@ export function buildAttachmentHint(attachments: MessageAttachment[]): string {
     if (att.hint) {
       hint = `\n> 💡 ${att.hint}`;
     } else if (att.type === 'image') {
-      hint = `\n> 💡 图片已保存到本地，路径: \`${att.localPath}\`，格式: ${att.mimeType || '未知'}，可使用查看图片工具读取`;
+      hint = `\n> 💡 Image saved locally at: \`${att.localPath}\`, format: ${att.mimeType || 'unknown'}, use the image viewer tool to open`;
     } else if (att.type === 'audio') {
-      hint = `\n> 💡 语音文件路径: \`${att.localPath}\`，可用语音识别工具处理`;
+      hint = `\n> 💡 Voice file path: \`${att.localPath}\`, use speech-to-text tool to process`;
     } else {
-      const ext = att.filename ? `，扩展名: ${att.filename.split('.').pop()}` : '';
-      hint = `\n> 💡 文件路径: \`${att.localPath}\`，可直接读取内容${ext}`;
+      const ext = att.filename ? `, extension: ${att.filename.split('.').pop()}` : '';
+      hint = `\n> 💡 File path: \`${att.localPath}\`, readable with file reading tool${ext}`;
     }
 
-    return `${icon} [用户消息附带${typeLabel} #${i + 1}]${detail}${mimeInfo}${dur}${hint}`;
+    return `${icon} [User message with ${typeLabel} #${i + 1}]${detail}${mimeInfo}${dur}${hint}`;
   }).join('\n\n');
 }
 

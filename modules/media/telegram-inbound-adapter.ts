@@ -40,12 +40,12 @@ export class TelegramInboundAdapter implements InboundMediaAdapter {
         const ProxyAgent = (globalThis as any).ProxyAgent;
         if (ProxyAgent) {
           this.dispatcher = new ProxyAgent(this.proxy);
-          console.log(`[TelegramInbound] 已配置代理 dispatcher: ${this.proxy}`);
+          console.log(`[TelegramInbound] Proxy dispatcher configured: ${this.proxy}`);
         } else {
-          console.log(`[TelegramInbound] ⚠️ 代理已配置但 ProxyAgent 不可用，将尝试直接连接`);
+          console.log(`[TelegramInbound] ⚠️ Proxy configured but ProxyAgent unavailable, will try direct connection`);
         }
       } catch (e: any) {
-        console.log(`[TelegramInbound] ⚠️ 代理 dispatcher 初始化失败: ${e.message}`);
+        console.log(`[TelegramInbound] ⚠️ Proxy dispatcher init failed: ${e.message}`);
       }
     }
   }
@@ -65,13 +65,13 @@ export class TelegramInboundAdapter implements InboundMediaAdapter {
       });
 
       if (!fileResp.ok) {
-        console.error(`[TelegramInbound] getFile 失败: HTTP ${fileResp.status} (file_id=${resourceKey.slice(-10)})`);
+        console.error(`[TelegramInbound] getFile failed: HTTP ${fileResp.status} (file_id=${resourceKey.slice(-10)})`);
         return null;
       }
 
       const fileData = await fileResp.json();
       if (!fileData.ok || !fileData.result?.file_path) {
-        console.error(`[TelegramInbound] getFile 返回无效: ${JSON.stringify(fileData).slice(0, 200)}`);
+        console.error(`[TelegramInbound] getFile returned invalid: ${JSON.stringify(fileData).slice(0, 200)}`);
         return null;
       }
 
@@ -79,7 +79,7 @@ export class TelegramInboundAdapter implements InboundMediaAdapter {
       const fileSize = fileData.result.file_size;
 
       if (fileSize && fileSize > 20 * 1024 * 1024) {
-        console.log(`[TelegramInbound] 文件过大 (${fileSize} bytes)，跳过下载`);
+        console.log(`[TelegramInbound] File too large (${fileSize} bytes), skipping download`);
         return null;
       }
 
@@ -88,7 +88,7 @@ export class TelegramInboundAdapter implements InboundMediaAdapter {
       const contentResp = await this._fetch(downloadUrl);
 
       if (!contentResp.ok) {
-        console.error(`[TelegramInbound] 下载文件失败: HTTP ${contentResp.status} (path=${filePath})`);
+        console.error(`[TelegramInbound] Download failed: HTTP ${contentResp.status} (path=${filePath})`);
         return null;
       }
 
@@ -105,7 +105,7 @@ export class TelegramInboundAdapter implements InboundMediaAdapter {
         sourceKey: resourceKey,
       };
     } catch (e: any) {
-      console.error(`[TelegramInbound] 下载资源异常: ${e.message}`);
+      console.error(`[TelegramInbound] download resource exception: ${e.message}`);
       return null;
     }
   }

@@ -1,12 +1,12 @@
 // ================================================================
-// setup.ts — 交互式配置向导（v2）
+// setup.ts — Interactive Setup Wizard (v2)
 // ================================================================
-// 交互方式：
-//   ↑↓ 或 空格 — 切换选项
-//   回车 — 确认选择
-//   ESC — 返回上一步
+// Interaction:
+//   ↑↓ or Space — navigate options
+//   Enter — confirm selection
+//   ESC — go back
 //
-// 支持的 IM 平台：飞书 / Telegram / 企业微信 / 个人微信
+// Supported IM platforms: Feishu / Telegram / WeCom / WeChat
 // ================================================================
 
 import * as fs from 'fs';
@@ -17,7 +17,7 @@ import { randomUUID } from 'crypto';
 import { checkAllBackends, formatBackendStatus } from '../utils/backend-check';
 
 // ================================================================
-// 键盘输入（raw mode）
+// Keyboard input (raw mode)
 // ================================================================
 
 const KEY = {
@@ -29,7 +29,7 @@ const KEY = {
   BACKSPACE: '\x7f',
 };
 
-/** 读取单个按键 */
+/** Read a single keypress */
 function readKey(): Promise<string> {
   return new Promise((resolve) => {
     const onData = (data: Buffer) => {
@@ -43,23 +43,22 @@ function readKey(): Promise<string> {
 }
 
 // ================================================================
-// 菜单选择（↑↓/空格 切换，回车确认）
+// Menu selection (↑↓/Space navigate, Enter confirm)
 // ================================================================
 
 async function selectMenu(title: string, options: string[]): Promise<number> {
   let idx = 0;
-  const linesAbove = options.length + 2;
 
   function render() {
-    // 清除之前的输出
-    process.stdout.write('\x1B[0G'); // 回到行首
+    // Clear previous output
+    process.stdout.write('\x1B[0G'); // Return to line start
     options.forEach((opt, i) => {
       const prefix = i === idx ? '▸ ' : '  ';
       process.stdout.write(`\x1B[0G${prefix}${opt}\x1B[0K\n`);
     });
   }
 
-  // 显示标题
+  // Show title
   console.log(title);
   render();
 
@@ -71,15 +70,15 @@ async function selectMenu(title: string, options: string[]): Promise<number> {
       const key = await readKey();
 
       if (key === KEY.UP || key === KEY.DOWN || key === KEY.SPACE) {
-        // 移动光标
+        // Move cursor
         idx = (idx + (key === KEY.UP ? -1 : 1) + options.length) % options.length;
-        // 重绘所有选项
-        process.stdout.write(`\x1B[${options.length}A`); // 上移 N 行
+        // Redraw all options
+        process.stdout.write(`\x1B[${options.length}A`); // Move up N lines
         render();
       } else if (key === KEY.ENTER) {
         break;
       } else if (key === KEY.ESC) {
-        return -1; // ESC = 返回上一步
+        return -1; // ESC = go back
       }
     }
   } finally {
@@ -92,7 +91,7 @@ async function selectMenu(title: string, options: string[]): Promise<number> {
 }
 
 // ================================================================
-// 文本输入（回车确认，ESC 返回 -1）
+// Text input (Enter confirm, ESC returns -1)
 // ================================================================
 
 async function promptText(label: string, defaultValue = ''): Promise<string> {
@@ -111,19 +110,19 @@ async function promptText(label: string, defaultValue = ''): Promise<string> {
         break;
       } else if (key === KEY.ESC) {
         process.stdout.write('\x1B[0K\n');
-        return -1 as unknown as string; // 特殊返回值表示 ESC
+        return -1 as unknown as string; // Special return value for ESC
       } else if (key === KEY.BACKSPACE) {
         if (buf.length > 0) {
           buf.pop();
-          process.stdout.write('\x1B[1D \x1B[1D'); // 退格删除
+          process.stdout.write('\x1B[1D \x1B[1D'); // Backspace delete
         }
       } else if (key === KEY.UP || key === KEY.DOWN) {
-        // 忽略方向键
+        // Ignore arrow keys
       } else if (key === KEY.SPACE) {
         buf.push(' ');
         process.stdout.write(' ');
       } else if (key.length >= 1 && !key.startsWith('\x1b')) {
-        // 普通字符 / 粘贴的多字符块（不含转义序列的文本）
+        // Normal characters / pasted multi-char blocks (text without escape sequences)
         buf.push(key);
         process.stdout.write(key);
       }
@@ -139,7 +138,7 @@ async function promptText(label: string, defaultValue = ''): Promise<string> {
 }
 
 // ================================================================
-// 确认（Y/N，回车确认，ESC 返回 -1）
+// Confirmation (Y/N, Enter confirm, ESC returns -1)
 // ================================================================
 
 async function confirm(label: string, defaultYes = true): Promise<boolean | -1> {
@@ -172,7 +171,7 @@ async function confirm(label: string, defaultYes = true): Promise<boolean | -1> 
 }
 
 // ================================================================
-// 供应商预设
+// Provider presets
 // ================================================================
 
 interface ProviderPreset {
@@ -180,12 +179,12 @@ interface ProviderPreset {
   baseUrl: string;
   format: 'openai' | 'anthropic';
   models: string[];
-  hint?: string; // 额外说明
+  hint?: string; // Additional note
 }
 
 const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    name: 'DashScope（阿里百炼）',
+    name: 'DashScope (Alibaba Bailian)',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     format: 'openai',
     models: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
@@ -197,7 +196,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     models: ['deepseek-chat', 'deepseek-reasoner'],
   },
   {
-    name: '智谱 AI（Zhipu）',
+    name: 'Zhipu AI (Zhipu)',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     format: 'openai',
     models: ['glm-4-plus', 'glm-4-flash', 'glm-4'],
@@ -209,13 +208,13 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     models: ['MiniMax-M2.5', 'MiniMax-M1'],
   },
   {
-    name: '硅基流动（SiliconFlow）',
+    name: 'SiliconFlow',
     baseUrl: 'https://api.siliconflow.cn/v1',
     format: 'openai',
     models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3'],
   },
   {
-    name: 'Moonshot（月之暗面）',
+    name: 'Moonshot (Moonshot AI)',
     baseUrl: 'https://api.moonshot.cn/v1',
     format: 'openai',
     models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
@@ -225,31 +224,31 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: 'https://api.openai.com/v1',
     format: 'openai',
     models: ['gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'],
-    hint: '需要代理才能访问',
+    hint: 'Proxy required to access',
   },
   {
     name: 'Anthropic',
     baseUrl: 'https://api.anthropic.com',
     format: 'anthropic',
     models: ['claude-sonnet-4-20250514', 'claude-haiku-4-20250514', 'claude-opus-4-20250514'],
-    hint: '需要代理才能访问',
+    hint: 'Proxy required to access',
   },
   {
-    name: 'Gemini（Google）',
+    name: 'Gemini (Google)',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     format: 'openai',
     models: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-    hint: '需要代理才能访问',
+    hint: 'Proxy required to access',
   },
   {
-    name: 'xAI（Grok）',
+    name: 'xAI (Grok)',
     baseUrl: 'https://api.x.ai/v1',
     format: 'openai',
     models: ['grok-3', 'grok-3-mini'],
-    hint: '需要代理才能访问',
+    hint: 'Requires proxy to access',
   },
   {
-    name: 'Ollama（本地）',
+    name: 'Ollama (Local)',
     baseUrl: 'http://localhost:11434/v1',
     format: 'openai',
     models: ['qwen2.5', 'llama3.2', 'deepseek-r1'],
@@ -257,38 +256,38 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
 ];
 
 // ================================================================
-// IM 平台配置定义
+// IM platform configuration
 // ================================================================
 
 const IM_PLATFORMS = [
-  { value: 'feishu', label: '飞书', desc: 'WebSocket 长连接' },
-  { value: 'telegram', label: 'Telegram', desc: '长轮询' },
-  { value: 'wecom', label: '企业微信', desc: '扫码绑定 + WebSocket' },
-  { value: 'wechat', label: '个人微信', desc: 'iLink + QR 扫码' },
+  { value: 'feishu', label: 'Feishu', desc: 'WebSocket long-lived connection' },
+  { value: 'telegram', label: 'Telegram', desc: 'Long polling' },
+  { value: 'wecom', label: 'WeCom', desc: 'QR scan binding + WebSocket' },
+  { value: 'wechat', label: 'WeChat', desc: 'iLink + QR scan' },
 ];
 
-/** 每种 IM 需要的凭证字段 */
+/** Credential fields required by each IM type */
 const IM_FIELDS: Record<string, { key: string; label: string; required: boolean }[]> = {
   feishu: [
-    { key: 'appId', label: '飞书 App ID (cli_...)', required: true },
-    { key: 'appSecret', label: '飞书 App Secret', required: true },
+    { key: 'appId', label: 'Feishu App ID (cli_...)', required: true },
+    { key: 'appSecret', label: 'Feishu App Secret', required: true },
   ],
   telegram: [
     { key: 'appId', label: 'Bot Token', required: true },
-    { key: 'proxy', label: '代理地址（留空不使用）', required: false },
+    { key: 'proxy', label: 'Proxy URL (leave blank to skip)', required: false },
   ],
   wecom: [
-    // 企业微信使用扫码绑定，无需预填凭证，启动时自动触发 QR 扫码
+    // WeCom uses QR scan binding, no pre-filled credentials needed, QR scan triggered automatically on startup
   ],
   wechat: [
-    // 微信通过 iLink + QR 扫码认证，无需预填凭证
-    { key: 'botId', label: 'iLink Bot ID（留空使用 QR 扫码）', required: false },
-    { key: 'botToken', label: 'iLink Bot Token（留空使用 QR 扫码）', required: false },
+    // WeChat authenticates via iLink + QR scan, no pre-filled credentials needed
+    { key: 'botId', label: 'iLink Bot ID (leave blank for QR scan)', required: false },
+    { key: 'botToken', label: 'iLink Bot Token (leave blank for QR scan)', required: false },
   ],
 };
 
 // ================================================================
-// 主流程
+// Main flow
 // ================================================================
 
 export async function runSetupWizard(): Promise<void> {
@@ -296,123 +295,123 @@ export async function runSetupWizard(): Promise<void> {
   const configPath = path.join(dataDir, 'config.json');
 
   console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║   🚀  imtoagent 配置向导                     ║');
+  console.log('║   🚀  imtoagent Setup Wizard                 ║');
   console.log('╚══════════════════════════════════════════════╝');
-  console.log(`\n数据目录: ${dataDir}`);
-  console.log(`操作提示: ↑↓/空格 切换  |  回车确认  |  ESC 返回\n`);
+  console.log(`\nData directory: ${dataDir}`);
+  console.log(`Controls: ↑↓/Space navigate  |  Enter confirm  |  ESC go back\n`);
 
-  // ===== Step 1: 检测已有配置 =====
+  // ===== Step 1: Detect existing configuration =====
   let existingConfig: any = null;
   let mergeMode = false;
 
   if (fs.existsSync(configPath)) {
-    console.log('📋 检测到已有配置\n');
-    const idx = await selectMenu('选择操作', ['覆盖现有配置', '合并（保留现有 Bot）', '退出']);
+    console.log('📋 Existing configuration detected\n');
+    const idx = await selectMenu('Choose action', ['Overwrite existing config', 'Merge (keep existing Bots)', 'Exit']);
     if (idx === -1) return; // ESC
-    if (idx === 2) { console.log('👋 已取消'); process.exit(0); }
+    if (idx === 2) { console.log('👋 Cancelled'); process.exit(0); }
     if (idx === 1) mergeMode = true;
 
     try {
       existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     } catch {
-      console.log('⚠️  现有配置文件解析失败，将重新生成');
+      console.log('⚠️  Failed to parse existing config, will regenerate');
       existingConfig = null;
       mergeMode = false;
     }
   }
 
-  // ===== Step 2: 检测后端 =====
-  console.log('\n📌 检测后端 Agent...\n');
+  // ===== Step 2: Detect backends =====
+  console.log('\n📌 Detecting backend agents...\n');
   const backendStatus = checkAllBackends();
   console.log(formatBackendStatus(backendStatus));
 
   const installedBackends = backendStatus.filter(b => b.installed);
   if (installedBackends.length === 0) {
-    console.log('\n⚠️  未检测到任何后端 Agent。');
-    console.log('推荐安装:');
+    console.log('\n⚠️  No backend agents detected.');
+    console.log('Recommended installs:');
     console.log('  npm install -g @anthropic-ai/claude-agent-sdk   # Claude Code');
     console.log('  npm install -g @openai/codex                    # Codex');
     console.log('  npm install -g opencode                         # OpenCode');
-    const r = await confirm('是否继续配置？（启动后发消息会报错，直到后端安装）', false);
-    if (r === false || r === -1) { console.log('\n👋 安装后端后请重新运行 "imtoagent setup"'); process.exit(0); }
-    console.log('\n⚠️  已跳过，你可以稍后安装后端。\n');
+    const r = await confirm('Continue configuring? (Messaging will fail until backends are installed)', false);
+    if (r === false || r === -1) { console.log('\n👋 Run "imtoagent setup" again after installing backends'); process.exit(0); }
+    console.log('\n⚠️  Skipped, you can install backends later.\n');
   } else {
-    console.log(`\n✅ 已安装: ${installedBackends.map(b => b.label).join(', ')}\n`);
+    console.log(`\n✅ Installed: ${installedBackends.map(b => b.label).join(', ')}\n`);
   }
 
-  // ===== Step 3: 配置 Bot =====
-  console.log('📌 Step 3: 配置 Bot\n');
+  // ===== Step 3: Configure Bots =====
+  console.log('📌 Step 3: Configure Bots\n');
 
   const bots: any[] = (mergeMode && existingConfig?.bots) ? [...existingConfig.bots] : [];
 
   let addingBots = true;
   while (addingBots) {
-    console.log(`\n--- 添加新 Bot (已有 ${bots.length} 个) ---\n`);
+    console.log(`\n--- Add New Bot (${bots.length} existing) ---\n`);
 
-    // 3a: 选择 IM 平台
+    // 3a: Select IM platform
     const imLabels = IM_PLATFORMS.map(p => `${p.label}  ${p.desc}`);
-    const imIdx = await selectMenu('选择 IM 平台', imLabels);
+    const imIdx = await selectMenu('Select IM platform', imLabels);
     if (imIdx === -1) { if (bots.length === 0) return; break; } // ESC
     const imType = IM_PLATFORMS[imIdx].value;
 
-    // 3b: 自动生成 Bot 名称，可自定义
+    // 3b: Auto-generate Bot name, customizable
     const defaultName = IM_PLATFORMS[imIdx].label + 'Bot';
-    const nameInput = await promptText('Bot 名称', defaultName);
+    const nameInput = await promptText('Bot name', defaultName);
     if ((nameInput as any) === -1) { if (bots.length === 0) return; break; } // ESC
-    const botName = nameInput || defaultName; // 留空用默认
+    const botName = nameInput || defaultName; // Use default if empty
 
-    // 3c: 选择后端
+    // 3c: Select backend
     const backendLabels = backendStatus.map(b =>
-      b.installed ? `${b.label} (v${b.version})` : `${b.label} ⚠️ 未安装`
+      b.installed ? `${b.label} (v${b.version})` : `${b.label} ⚠️  Not installed`
     );
-    const backendIdx = await selectMenu('选择后端', backendLabels);
-    if (backendIdx === -1) continue; // ESC 返回重新选 IM
+    const backendIdx = await selectMenu('Select backend', backendLabels);
+    if (backendIdx === -1) continue; // ESC go back to IM selection
     const backend = backendStatus[backendIdx].type;
     const isBackendInstalled = backendStatus[backendIdx].installed;
 
-    // 后端未安装 → 提示自动安装
+    // Backend not installed → prompt for auto-install
     if (!isBackendInstalled) {
       const installCmd = backendStatus[backendIdx].installHint || '';
-      console.log(`\n⚠️  ${backend} 未安装`);
+      console.log(`\n⚠️  ${backend} not installed`);
       console.log(`   ${installCmd}\n`);
-      const r = await confirm('是否现在自动安装?');
+      const r = await confirm('Auto-install now?');
       if (r === true) {
         const { installBackend } = await import('../utils/backend-check');
         const ok = await installBackend(backend as 'claude' | 'codex' | 'opencode');
         if (ok) {
-          console.log(`✅ ${backend} 已安装\n`);
+          console.log(`✅ ${backend} installed\n`);
         } else {
-          console.log(`⚠️  安装失败，可稍后手动运行: ${installCmd}\n`);
-          const r2 = await confirm('仍要继续配置此 Bot?');
+          console.log(`⚠️  Installation failed, run manually later: ${installCmd}\n`);
+          const r2 = await confirm('Continue configuring this Bot anyway?');
           if (r2 === false) continue;
         }
       } else if (r === -1) {
-        continue; // ESC 返回
+        continue; // ESC go back
       } else {
-        console.log('跳过安装\n');
+        console.log('Skipping installation\n');
       }
     }
 
-    // 3d: 根据 IM 类型收集凭证
-    console.log(`\n--- ${IM_PLATFORMS.find(p => p.value === imType)?.label} 凭证 ---`);
+    // 3d: Collect credentials based on IM type
+    console.log(`\n--- ${IM_PLATFORMS.find(p => p.value === imType)?.label} credentials ---`);
     const fields = IM_FIELDS[imType] || [];
     const credentials: Record<string, string> = {};
 
     for (const field of fields) {
-      const val = await promptText(field.label + (field.required ? '' : '（可选）'));
+      const val = await promptText(field.label + (field.required ? '' : ' (optional)'));
       if ((val as any) === -1) { credentials._escaped = 'true'; break; } // ESC
       credentials[field.key] = val;
     }
-    if (credentials._escaped) continue; // ESC 返回重新选后端
+    if (credentials._escaped) continue; // ESC go back and re-select backend
 
-    // 3e: 工作目录
-    const cwd = await promptText('工作目录', os.homedir());
+    // 3e: Working directory
+    const cwd = await promptText('Working directory', os.homedir());
     if ((cwd as any) === -1) continue;
 
-    // 生成唯一 ID（UUID，用于目录隔离，改名不影响）
+    // Generate unique ID (UUID, for directory isolation, renaming doesn't affect it)
     const botId = randomUUID();
 
-    // 构建 Bot 配置（不同 IM 需要的字段不同）
+    // Build Bot configuration (different IM types need different fields)
     const bot: any = {
       id: botId,
       name: botName,
@@ -420,141 +419,147 @@ export async function runSetupWizard(): Promise<void> {
       cwd: cwd || os.homedir(),
     };
 
-    // 飞书需要 appId + appSecret
+    // Feishu needs appId + appSecret
     if (imType === 'feishu') {
       bot.appId = credentials.appId || '';
       bot.appSecret = credentials.appSecret || '';
     }
-    // Telegram 需要 appId（Bot Token），可选 proxy
+    // Telegram needs appId (Bot Token), optional proxy
     else if (imType === 'telegram') {
       bot.appId = credentials.appId || '';
       if (credentials.proxy) bot.proxy = credentials.proxy;
     }
-    // 企业微信：扫码绑定，无需预填凭证（可选 botId/secret）
+    // WeCom: QR scan binding, no pre-filled credentials (optional botId/secret)
     else if (imType === 'wecom') {
       bot.im = 'wecom';
       if (credentials.botId) bot.botId = credentials.botId;
       if (credentials.secret) bot.secret = credentials.secret;
     }
-    // 个人微信：可选 botId/botToken，留空则 QR 扫码
+    // WeChat: optional botId/botToken, QR scan if left blank
     else if (imType === 'wechat') {
       bot.im = 'wechat';
       if (credentials.botId) bot.botId = credentials.botId;
       if (credentials.botToken) bot.botToken = credentials.botToken;
       if (credentials.ilinkUserId) bot.ilinkUserId = credentials.ilinkUserId;
     }
-    // 默认：非飞书平台加 im 字段
+    // Default: non-Feishu platforms add im field
     else {
       bot.im = imType;
     }
 
-    // 检查重名
+    // Check for duplicate name
     const existingIdx = bots.findIndex(b => b.name === botName);
     if (existingIdx >= 0) {
       bots[existingIdx] = bot;
-      console.log(`✅ 已替换: ${botName}`);
+      console.log(`✅ Replaced: ${botName}`);
     } else {
       bots.push(bot);
-      console.log(`✅ 已添加: ${botName}`);
+      console.log(`✅ Added: ${botName}`);
     }
 
-    // 是否继续添加
-    const r = await confirm('继续添加其他 Bot?', true);
-    if (r === -1) addingBots = false; // ESC = 不添加了，进入下一步
+    // Whether to continue adding
+    const r = await confirm('Add another Bot?', true);
+    if (r === -1) addingBots = false; // ESC = done adding, proceed to next step
     else addingBots = (r === true);
   }
 
   if (bots.length === 0) {
-    console.log('\n⚠️  未配置任何 Bot。');
-    const r = await confirm('至少配置一个 Bot 吗?');
+    console.log('\n⚠️  No Bots configured.');
+    const r = await confirm('Configure at least one Bot?');
     if (r === true) return runSetupWizard();
-    console.log('\n⚠️  至少需要一个 Bot，配置已取消');
+    console.log('\n⚠️  At least one Bot required, configuration cancelled');
     return;
   }
 
-  // ===== Step 4: 配置模型供应商 =====
-  console.log('\n📌 Step 4: 配置模型供应商\n');
+  // ===== Step 4: Configure model providers =====
+  console.log('\n📌 Step 4: Configure model providers\n');
 
   const providers: Record<string, any> = {};
   if (mergeMode && existingConfig?.providers) {
     Object.assign(providers, existingConfig.providers);
-    console.log(`✅ 已保留 ${Object.keys(providers).length} 个现有供应商\n`);
+    console.log(`✅ Kept ${Object.keys(providers).length} existing provider(s)\n`);
   }
 
-  let addingProviders = true;
-  while (addingProviders) {
-    console.log('--- 添加新供应商 ---\n');
+  // Step 4 outer loop: ensure at least one provider (exit when user explicitly skips)
+  let step4Loop = true;
+  while (step4Loop) {
+    let addingProviders = true;
+    while (addingProviders) {
+    console.log('--- Add new provider ---\n');
 
-    // 选择预设 or 自定义
+    // Choose preset or custom
     const presetOptions = PROVIDER_PRESETS.map(p => {
       const tag = p.hint ? ` ${p.hint}` : '';
       return `${p.name}${tag}`;
     });
-    presetOptions.push('自定义...');
+    presetOptions.push('Custom...');
 
-    const presetIdx = await selectMenu('选择供应商', presetOptions);
+    const presetIdx = await selectMenu('Select provider', presetOptions);
     if (presetIdx === -1) { addingProviders = false; continue; }
 
     let provName: string, baseUrl: string, format: 'openai' | 'anthropic', models: string[];
 
     if (presetIdx < PROVIDER_PRESETS.length) {
-      // 使用预设
+      // Use preset
       const preset = PROVIDER_PRESETS[presetIdx];
-      provName = preset.name.split('（')[0].trim().toLowerCase(); // 取简短名称
+      provName = preset.name.split('(')[0].trim().toLowerCase(); // Take short name
       baseUrl = preset.baseUrl;
       format = preset.format;
       models = [...preset.models];
 
-      console.log(`\n✅ 预设已加载:`);
-      console.log(`   名称: ${provName}`);
+      console.log(`\n✅ Preset loaded:`);
+      console.log(`   Name: ${provName}`);
       console.log(`   URL:  ${preset.baseUrl}`);
-      console.log(`   格式: ${preset.format}`);
-      console.log(`   模型: ${preset.models.join(', ')}\n`);
+      console.log(`   Format: ${preset.format}`);
+      console.log(`   Models: ${preset.models.join(', ')}\n`);
 
-      // 确认/修改简短名称
-      const nameEdit = await promptText('供应商名称（留空确认）', provName);
+      // Confirm/edit short name
+      const nameEdit = await promptText('Provider name (leave blank to confirm)', provName);
       if ((nameEdit as any) === -1) continue;
       provName = nameEdit || provName;
 
-      // 确认/修改 Base URL
+      // Confirm/edit Base URL
       const urlEdit = await promptText('Base URL', baseUrl);
       if ((urlEdit as any) === -1) continue;
       baseUrl = urlEdit || baseUrl;
 
-      // 确认/修改模型列表
-      const modelsEdit = await promptText('模型列表（逗号分隔）', models.join(', '));
+      // Confirm/edit model list
+      const modelsEdit = await promptText('Model list (comma-separated)', models.join(', '));
       if ((modelsEdit as any) === -1) continue;
       if (modelsEdit) models = modelsEdit.split(',').map(s => s.trim()).filter(Boolean);
 
       if (providers[provName]) {
-        console.log(`⚠️  供应商 "${provName}" 已存在，将覆盖\n`);
+        console.log(`⚠️  Provider "${provName}" already exists, will overwrite\n`);
       }
     } else {
-      // 自定义
-      provName = await promptText('供应商名称 (如 deepseek, dashscope)');
+      // Custom
+      provName = await promptText('Provider name (e.g. deepseek, dashscope)');
       if ((provName as any) === -1) { addingProviders = false; continue; }
       if (!provName) { addingProviders = false; continue; }
       if (providers[provName]) {
-        console.log(`⚠️  供应商 "${provName}" 已存在，将覆盖\n`);
+        console.log(`⚠️  Provider "${provName}" already exists, will overwrite\n`);
       }
 
-      baseUrl = await promptText('Base URL (如 https://api.deepseek.com/v1)');
+      baseUrl = await promptText('Base URL (e.g. https://api.deepseek.com/v1)');
       if ((baseUrl as any) === -1) continue;
-      const modelsStr = await promptText('模型列表 (逗号分隔)');
+      const modelsStr = await promptText('Model list (comma-separated)');
       if ((modelsStr as any) === -1) continue;
       models = (modelsStr || '').split(',').map(s => s.trim()).filter(Boolean);
 
-      const formatIdx = await selectMenu('API 格式', ['openai', 'anthropic']);
+      const formatIdx = await selectMenu('API format', ['openai', 'anthropic']);
       if (formatIdx === -1) continue;
       format = ['openai', 'anthropic'][formatIdx];
     }
 
-    // API Key（所有路径都需要）
+    // API Key (required for all providers)
     const apiKey = await promptText('API Key');
     if ((apiKey as any) === -1) continue;
+    if (!apiKey) {
+      console.log('⚠️  API Key is empty, this provider will be temporarily unavailable\n');
+    }
 
-    // 价格（可选）
-    const priceInput = await promptText('价格 (入/出 每百万 Token，如 0.55,2.19，留空跳过)');
+    // Pricing (optional)
+    const priceInput = await promptText('Pricing (in/out per million tokens, e.g. 0.55,2.19, leave blank to skip)');
     if ((priceInput as any) === -1) continue;
 
     const pricing: any = {};
@@ -568,21 +573,24 @@ export async function runSetupWizard(): Promise<void> {
     }
 
     providers[provName] = { baseUrl, apiKey, models, format, ...(Object.keys(pricing).length ? { pricing } : {}) };
-    console.log(`✅ 已添加: ${provName}\n`);
+    console.log(`✅ Added: ${provName}\n`);
 
-    const r = await confirm('继续添加供应商?', false);
+    const r = await confirm('Continue adding providers?', false);
     if (r === -1) addingProviders = false;
     else addingProviders = (r === true);
   }
 
   if (Object.keys(providers).length === 0) {
-    console.log('\n⚠️  未配置任何供应商。');
-    const r = await confirm('至少配置一个供应商吗?');
-    if (r === true) { addingProviders = true; }
+    console.log('\n⚠️  No providers configured.');
+    const r = await confirm('Configure at least one provider?');
+    if (r === true) continue; // Re-enter step4Loop
+    if (r === -1) { console.log('\n⚠️  Skipped, you can configure this later.\n'); }
   }
+  step4Loop = false; // Has providers or user explicitly skipped
+}
 
-  // ===== Step 5: 选择默认模型 =====
-  console.log('\n📌 Step 5: 选择默认模型\n');
+  // ===== Step 5: Select default model =====
+  console.log('\n📌 Step 5: Select default model\n');
 
   const allModels: string[] = [];
   for (const [provName, prov] of Object.entries(providers)) {
@@ -594,24 +602,24 @@ export async function runSetupWizard(): Promise<void> {
   let defaultModel = '';
   if (allModels.length > 0) {
     const existingDefault = existingConfig?.defaultModel || allModels[0];
-    const val = await promptText('默认模型', existingDefault);
+    const val = await promptText('Default model', existingDefault);
     defaultModel = (val as any) === -1 ? existingDefault : (val || existingDefault);
   } else {
-    defaultModel = await promptText('默认模型 (供应商/模型名)') || 'deepseek/deepseek-v4-pro';
+    defaultModel = await promptText('Default model (provider/model)') || 'deepseek/deepseek-v4-pro';
     if ((defaultModel as any) === -1) defaultModel = 'deepseek/deepseek-v4-pro';
   }
 
-  // ===== Step 6: 生成灵魂文件 =====
-  console.log('\n📌 Step 6: 生成灵魂文件\n');
+  // ===== Step 6: Generate soul files =====
+  console.log('\n📌 Step 6: Generate soul files\n');
 
   for (const bot of bots) {
     const botSoulDir = getSoulDir(getBotKey(bot));
     const templateSoulDir = path.join(getPkgDir(), 'templates', 'soul.template');
 
     if (fs.existsSync(botSoulDir)) {
-      const r = await confirm(`已存在 ${bot.name} 的灵魂文件，重新生成?`, false);
+      const r = await confirm(`Soul files for ${bot.name} already exist, regenerate?`, false);
       if (r === -1 || r === false) {
-        console.log(`⏭  跳过: ${bot.name}`);
+        console.log(`⏭  Skipped: ${bot.name}`);
         continue;
       }
     }
@@ -633,11 +641,11 @@ export async function runSetupWizard(): Promise<void> {
         fs.writeFileSync(destPath, content);
       }
     }
-    console.log(`✅ ${bot.name}: 灵魂文件 → ${botSoulDir}`);
+    console.log(`✅ ${bot.name}: soul files → ${botSoulDir}`);
   }
 
-  // ===== Step 7: 写入配置文件 =====
-  console.log('\n📌 Step 7: 写入配置文件\n');
+  // ===== Step 7: Write configuration files =====
+  console.log('\n📌 Step 7: Write configuration files\n');
 
   fs.mkdirSync(dataDir, { recursive: true });
 
@@ -692,22 +700,22 @@ export async function runSetupWizard(): Promise<void> {
 
   fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
   fs.mkdirSync(path.join(dataDir, 'logs'), { recursive: true });
-  console.log('✅ 子目录已创建 (sessions/, logs/)');
+  console.log('✅ Sub-directories created (sessions/, logs/)');
 
-  // ===== 完成 =====
+  // ===== Done =====
   console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║   ✅ 配置完成！                              ║');
+  console.log('║   ✅ Configuration complete!                 ║');
   console.log('╚══════════════════════════════════════════════╝\n');
   console.log(`Bot: ${bots.map(b => b.name).join(', ')}`);
-  console.log(`默认模型: ${defaultModel}`);
-  console.log(`供应商: ${Object.keys(providers).join(', ') || '无'}`);
-  console.log(`\n下一步:`);
-  console.log(`  imtoagent start    启动网关`);
-  console.log(`  imtoagent status   查看状态\n`);
+  console.log(`Default model: ${defaultModel}`);
+  console.log(`Providers: ${Object.keys(providers).join(', ') || 'None'}`);
+  console.log(`\nNext steps:`);
+  console.log(`  imtoagent start    Start the gateway`);
+  console.log(`  imtoagent status   Check status\n`);
 }
 
 // ================================================================
-// 工具函数
+// Utility functions
 // ================================================================
 
 function buildDefaultAliases(defaultModel: string): Record<string, string> {

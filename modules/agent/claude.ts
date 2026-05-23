@@ -66,7 +66,7 @@ export class ClaudeAgentModule {
     const session = ctx.sessions.get(chatId);
     if (!session || session.running) return;
     session.running = true;
-    console.log(`[${ctx.name}] Claude 循环启动 chat=${chatId.slice(-8)}`);
+    console.log(`[${ctx.name}] Claude loop started chat=${chatId.slice(-8)}`);
 
     try {
       const modelSpec = ctx.activeModel;
@@ -134,22 +134,22 @@ export class ClaudeAgentModule {
           });
 
           if (result.subtype === 'error' || result.subtype === 'cancelled') {
-            await ctx.reply(chatId, `❌ ${result.error || result.result || '未知错误'}`);
+            await ctx.reply(chatId, `❌ ${result.error || result.result || 'Unknown error'}`);
           } else if (fullResponse) {
             await ctx.sendFormattedReply(chatId, fullResponse);
           } else {
-            await ctx.reply(chatId, `✅ 已完成 (${toolCalls} 步操作)`);
+            await ctx.reply(chatId, `✅ Completed (${toolCalls} steps)`);
           }
 
           ctx.flushToolLog(chatId);
-          const costStr = callCost > 0 ? `费用 $${callCost.toFixed(4)}\n` : '';
+          const costStr = callCost > 0 ? `Cost $${callCost.toFixed(4)}\n` : '';
           await ctx.sendProgress(chatId,
-            `✅ 完成 (${toolCalls} 步)\n输入 ${callInput.toLocaleString()} Token\n输出 ${callOutput.toLocaleString()} Token\n${costStr}耗时 ${(callDur/1000).toFixed(1)}s`);
+            `✅ Completed (${toolCalls} steps)\nInput ${callInput.toLocaleString()} Token\nOutput ${callOutput.toLocaleString()} Token\n${costStr}Duration ${(callDur/1000).toFixed(1)}s`);
           fullResponse = ''; toolCalls = 0;
         }
       }
     } catch (e: any) {
-      console.error(`[${ctx.name}] Claude 错误: ${e.message}`);
+      console.error(`[${ctx.name}] Claude error: ${e.message}`);
       await ctx.reply(chatId, `❌ ${e.message}`);
     } finally {
       session.running = false;

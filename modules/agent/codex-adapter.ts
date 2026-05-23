@@ -64,12 +64,12 @@ async function spawnCodexExec(cwd: string, prompt: string): Promise<{ threadId: 
   let stdout = '', stderr = '';
   try {
     [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout 读取失败: ${e?.message || e}`); }),
-      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr 读取失败: ${e?.message || e}`); }),
+      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout read failed: ${e?.message || e}`); }),
+      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr read failed: ${e?.message || e}`); }),
     ]);
   } catch (ioErr: any) {
     try { child.kill('SIGKILL'); } catch {}
-    throw new Error(`codex exec I/O 异常: ${ioErr.message}`);
+    throw new Error(`codex exec I/O error: ${ioErr.message}`);
   }
 
   const code = await child.exited.catch(() => -1);
@@ -87,12 +87,12 @@ async function spawnCodexResume(cwd: string, threadId: string, prompt: string): 
   let stdout = '', stderr = '';
   try {
     [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout 读取失败: ${e?.message || e}`); }),
-      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr 读取失败: ${e?.message || e}`); }),
+      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout read failed: ${e?.message || e}`); }),
+      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr read failed: ${e?.message || e}`); }),
     ]);
   } catch (ioErr: any) {
     try { child.kill('SIGKILL'); } catch {}
-    throw new Error(`codex exec resume I/O 异常: ${ioErr.message}`);
+    throw new Error(`codex exec resume I/O error: ${ioErr.message}`);
   }
 
   const code = await child.exited.catch(() => -1);
@@ -118,7 +118,7 @@ async function runViaAppServer(
     sessionAny.codexThreadId = await client.startThread(cwd);
     sessionAny._appServerGen = currentGen;
     session.metadata.codexThreadId = sessionAny.codexThreadId;
-    console.log(`[CodexAdapter] app-server 全新 thread=${sessionAny.codexThreadId.slice(-8)}${threadExpired ? ' (进程重启)' : ''}`);
+    console.log(`[CodexAdapter] app-server new thread=${sessionAny.codexThreadId.slice(-8)}${threadExpired ? ' (process restarted)' : ''}`);
   }
 
   await client.sendPrompt(sessionAny.codexThreadId, prompt, cwd);
@@ -130,7 +130,7 @@ async function runViaAppServer(
 
   for await (const event of client.receiveEvents()) {
     if (Date.now() - startTime > MAX_DURATION) {
-      console.error('[CodexAdapter] app-server 任务超时 (10min)');
+      console.error('[CodexAdapter] app-server task timed out (10min)');
       break;
     }
 
@@ -145,7 +145,7 @@ async function runViaAppServer(
         totalUsage.outputTokens += event.usage?.outputTokens || 0;
         break;
       case 'error':
-        throw new Error(`app-server 错误: ${event.error}`);
+        throw new Error(`app-server error: ${event.error}`);
     }
   }
 
@@ -177,7 +177,7 @@ export class CodexAdapter implements AgentAdapter {
     }
 
     if (session.codexMode === 'plan') {
-      effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${effectiveText}`;
+      effectiveText = `[Mode: Plan then execute] Please create a clear plan first, wait for my confirmation before executing. User request: ${effectiveText}`;
     }
 
     const isFresh = session.startFresh || !sessionAny.codexThreadId;
@@ -194,7 +194,7 @@ export class CodexAdapter implements AgentAdapter {
       execServerUsage = r.usage;
     } catch (appErr: any) {
       const errMsg = appErr.message || '';
-      console.error(`[CodexAdapter] app-server 失败: ${errMsg}`);
+      console.error(`[CodexAdapter] app-server failed: ${errMsg}`);
 
       if (errMsg.includes('thread not found') || errMsg.includes('Thread not found')) {
         try {
@@ -202,7 +202,7 @@ export class CodexAdapter implements AgentAdapter {
           const r2 = await runViaAppServer(cwd, effectiveText, input.chatId, session, true);
           response = r2.response;
           execServerUsage = r2.usage;
-          console.error(`[CodexAdapter] app-server thread 重建成功`);
+          console.error(`[CodexAdapter] app-server thread rebuilt successfully`);
         } catch {
           useExecFallback = true;
         }
@@ -225,7 +225,7 @@ export class CodexAdapter implements AgentAdapter {
     }
 
     return {
-      text: response || '✅ 已完成',
+      text: response || '✅ Completed',
       usage: execServerUsage || undefined,
     };
   }

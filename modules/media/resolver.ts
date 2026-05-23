@@ -50,31 +50,31 @@ function buildHintForCategory(entry: MediaEntry): string {
 
   switch (category) {
     case 'image':
-      return `图片已保存到本地，路径: \`${localPath}\`，格式: ${mimeType}，可使用图片查看工具打开`;
+      return `Image saved locally, path: \`${localPath}\`, format: ${mimeType}, can be opened with an image viewer`;
 
     case 'audio':
-      return `音频文件路径: \`${localPath}\`，格式: ${mimeType}，可用语音识别工具处理`;
+      return `Audio file path: \`${localPath}\`, format: ${mimeType}, can be processed with speech recognition tools`;
 
     case 'video':
-      return `视频文件路径: \`${localPath}\`，格式: ${mimeType}`;
+      return `Video file path: \`${localPath}\`, format: ${mimeType}`;
 
     case 'document':
-      return `文档文件路径: \`${localPath}\`，类型: ${mimeType}，可直接读取（如果是文本/PDF）或用相应工具处理`;
+      return `Document file path: \`${localPath}\`, type: ${mimeType}, can be read directly (if text/PDF) or processed with appropriate tools`;
 
     case 'text':
-      return `文本文件路径: \`${localPath}\`，可直接用文件读取工具读取内容`;
+      return `Text file path: \`${localPath}\`, can be read directly with a file reading tool`;
 
     case 'spreadsheet':
-      return `表格文件路径: \`${localPath}\`，类型: ${mimeType}，可用表格解析工具（如 Python pandas/openpyxl）处理`;
+      return `Spreadsheet file path: \`${localPath}\`, type: ${mimeType}, can be processed with spreadsheet tools (e.g. Python pandas/openpyxl)`;
 
     case 'presentation':
-      return `演示文稿路径: \`${localPath}\`，类型: ${mimeType}`;
+      return `Presentation file path: \`${localPath}\`, type: ${mimeType}`;
 
     case 'archive':
-      return `压缩文件路径: \`${localPath}\`，类型: ${mimeType}，需要先解压再处理`;
+      return `Archive file path: \`${localPath}\`, type: ${mimeType}, needs to be extracted before processing`;
 
     default:
-      return `文件路径: \`${localPath}\`，格式: ${mimeType}，可用文件工具分析或直接读取`;
+      return `File path: \`${localPath}\`, format: ${mimeType}, can be analyzed with file tools or read directly`;
   }
 }
 
@@ -109,7 +109,7 @@ export class InboundMediaResolver {
       );
 
       if (!downloaded) {
-        console.log(`[${this.adapter.platform}] 下载资源失败: ${request.resourceKey}`);
+        console.log(`[${this.adapter.platform}] Failed to download resource: ${request.resourceKey}`);
         return null;
       }
 
@@ -126,7 +126,7 @@ export class InboundMediaResolver {
 
       return { attachment, entry };
     } catch (e: any) {
-      console.error(`[${this.adapter.platform}] 解析媒体异常: ${e.message}`);
+      console.error(`[${this.adapter.platform}] Media resolution error: ${e.message}`);
       return null;
     }
   }

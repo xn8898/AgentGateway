@@ -25,7 +25,7 @@ export class DefaultErrorHandler implements ErrorHandler {
     const errMsg = error.message || String(error);
     const backend = ctx.backend;
 
-    console.error(`[Error] ${backend} 调用失败 (attempt ${ctx.attempt}): ${errMsg}`);
+    console.error(`[Error] ${backend} call failed (attempt ${ctx.attempt}): ${errMsg}`);
 
     // 提取 HTTP 状态码
     const statusCode = this.extractStatusCode(error);
@@ -35,7 +35,7 @@ export class DefaultErrorHandler implements ErrorHandler {
     if (ctx.attempt < 2) {
       // 网络超时、5xx → 重试
       if (isTimeout || statusCode >= 500) {
-        console.log(`[Error] 将重试 ${backend} 调用 (${ctx.attempt + 1}/2)`);
+        console.log(`[Error] Will retry ${backend} call (${ctx.attempt + 1}/2)`);
         return { type: 'retry', maxAttempts: 2 };
       }
 
@@ -43,7 +43,7 @@ export class DefaultErrorHandler implements ErrorHandler {
       if (statusCode === 429) {
         const retryAfter = this.extractRetryAfter(error);
         if (retryAfter > 0) {
-          console.log(`[Error] 429 限流，等待 ${retryAfter}ms 后重试`);
+          console.log(`[Error] 429 rate limited, waiting ${retryAfter}ms before retry`);
           await this.sleep(retryAfter);
         }
         return { type: 'retry', maxAttempts: 2 };
@@ -98,24 +98,24 @@ export class DefaultErrorHandler implements ErrorHandler {
     const statusCode = this.extractStatusCode(error);
 
     if (statusCode === 401 || statusCode === 403) {
-      return `⚠️ ${backend} 后端认证失败，请联系管理员检查配置。`;
+      return `⚠️ ${backend} backend authentication failed. Please ask an admin to check the configuration.`;
     }
 
     if (statusCode === 429) {
-      return `⚠️ 当前请求过于频繁，请稍后再试。`;
+      return `⚠️ Too many requests. Please try again later.`;
     }
 
     if (statusCode >= 500) {
-      return `⚠️ ${backend} 服务端暂时不可用，请稍后重试。`;
+      return `⚠️ ${backend} server is temporarily unavailable. Please try again later.`;
     }
 
     if (this.isTimeoutError(error)) {
-      return `⚠️ 请求超时，后端可能正在处理复杂任务。请稍后再试。`;
+      return `⚠️ Request timed out. The backend may be processing a complex task. Please try again later.`;
     }
 
     // 通用错误
     const shortMsg = error.message.slice(0, 100);
-    return `⚠️ 处理消息时遇到错误：${shortMsg}`;
+    return `⚠️ Error processing message: ${shortMsg}`;
   }
 
   private sleep(ms: number): Promise<void> {

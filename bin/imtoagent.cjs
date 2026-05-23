@@ -3,7 +3,7 @@
 "use strict";
 var path = require("path");
 var fs = require("fs");
-var spawnSync = require("child_process").spawnSync;
+var spawn = require("child_process").spawn;
 
 var candidates = [
   process.env.BUN_BIN,
@@ -12,7 +12,7 @@ var candidates = [
   "/opt/homebrew/bin/bun",
 ];
 try {
-  var r = spawnSync("which", ["bun"]);
+  var r = require("child_process").spawnSync("which", ["bun"]);
   if (r.status === 0) candidates.unshift(r.stdout.toString().trim());
 } catch (e) {}
 
@@ -25,15 +25,23 @@ for (var i = 0; i < candidates.length; i++) {
 }
 
 if (!bunPath) {
-  console.error("❌ bun 未找到，请先安装: https://bun.sh");
+  console.error("❌ bun not found, please install: https://bun.sh");
   console.error("   curl -fsSL https://bun.sh/install | bash");
   process.exit(1);
 }
 
 var pkgDir = path.resolve(__dirname, "..");
 var real = path.join(pkgDir, "bin", "imtoagent-real");
-var result = spawnSync(bunPath, [real].concat(process.argv.slice(2)), {
+var child = spawn(bunPath, [real].concat(process.argv.slice(2)), {
   stdio: "inherit",
   env: Object.assign({}, process.env),
 });
-process.exit(result.status || 0);
+
+child.on("exit", function (code) {
+  process.exit(code || 0);
+});
+
+child.on("error", function (err) {
+  console.error("❌ Failed to start imtoagent:", err.message);
+  process.exit(1);
+});

@@ -63,8 +63,8 @@ async function ocSendPrompt(
   onTool?: (name: string, args: Record<string, any>) => void
 ): Promise<{ response: string; toolCalls: Array<{ name: string; summary: string }> }> {
   const MAX_TURNS = 50;
-  const TURN_TIMEOUT = 300_000;  // 每轮 5 分钟
-  const MAX_DURATION = 600_000;  // 总超时 10 分钟
+  const TURN_TIMEOUT = 300_000;  // 5 min per turn
+  const MAX_DURATION = 600_000;  // total timeout 10 min
   const startTime = Date.now();
 
   let promptText = initialText;
@@ -74,7 +74,7 @@ async function ocSendPrompt(
 
   while (turn < MAX_TURNS) {
     if (Date.now() - startTime > MAX_DURATION) {
-      console.error('[OpenCodeAdapter] 任务总超时 (10min)');
+      console.error('[OpenCodeAdapter] Task timed out (10min)');
       break;
     }
     turn++;
@@ -118,22 +118,22 @@ async function ocSendPrompt(
 
     // 有文本回复 → 任务完成（OpenCode 内部已完成多轮 agent loop）
     if (hasText) {
-      console.log(`[OpenCodeAdapter] ✅ 完成于 turn ${turn}/${MAX_TURNS}`);
+      console.log(`[OpenCodeAdapter] ✅ completed at turn ${turn}/${MAX_TURNS}`);
       break;
     }
 
     // 无文本且无 tool_call → 空响应，结束
     if (!hasToolCall) {
-      console.log(`[OpenCodeAdapter] ⚠️ 空响应，结束于 turn ${turn}/${MAX_TURNS}`);
+      console.log(`[OpenCodeAdapter] ⚠️ empty response, ending at turn ${turn}/${MAX_TURNS}`);
       break;
     }
 
     // 仅有 tool_call 无文本 → OpenCode 无法自行执行，推进下一轮
-    promptText = '继续执行，完成剩余任务';
+    promptText = 'Continue executing, complete remaining tasks';
   }
 
   if (turn >= MAX_TURNS) {
-    console.warn(`[OpenCodeAdapter] ⚠️ 达到最大轮次 ${MAX_TURNS}`);
+    console.warn(`[OpenCodeAdapter] ⚠️ reached max turns ${MAX_TURNS}`);
   }
 
   return { response: accumulatedResponse, toolCalls: allToolCalls };
@@ -170,7 +170,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     }
 
     if (session.codexMode === 'plan') {
-      effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${effectiveText}`;
+      effectiveText = `[Mode: Plan then execute] Please create a clear plan first, wait for my confirmation before executing. User request: ${effectiveText}`;
     }
 
     // 清理标记
@@ -181,11 +181,11 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (shouldClear || !sessionAny.ocSessionId) {
       if (sessionAny.ocSessionId) {
         await ocDeleteSession(serverUrl, sessionAny.ocSessionId);
-        console.log(`[OpenCodeAdapter] 已清除 oc session=${sessionAny.ocSessionId.slice(-8)}`);
+        console.log(`[OpenCodeAdapter] Cleared oc session=${sessionAny.ocSessionId.slice(-8)}`);
       }
       sessionAny.ocSessionId = await ocCreateSession(serverUrl, input.chatId);
       session.metadata.ocSessionId = sessionAny.ocSessionId;
-      console.log(`[OpenCodeAdapter] 新建 oc session=${sessionAny.ocSessionId.slice(-8)}`);
+      console.log(`[OpenCodeAdapter] Created oc session=${sessionAny.ocSessionId.slice(-8)}`);
     }
 
     // 构建系统提示词
@@ -209,7 +209,7 @@ export class OpenCodeAdapter implements AgentAdapter {
     );
 
     return {
-      text: response || '✅ 已完成',
+      text: response || '✅ Completed',
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     };
   }
@@ -242,12 +242,12 @@ export async function startOpenCodeServer(): Promise<void> {
   try {
     const res = await fetch(`${OC_URL}/global/health`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      console.log(`[OpenCodeAdapter] 检测到已有服务运行在 ${OC_URL}，复用`);
+      console.log(`[OpenCodeAdapter] Detected existing service running at ${OC_URL}, reusing`);
       return;
     }
   } catch {}
 
-  console.log('[OpenCodeAdapter] 启动 opencode serve...');
+  console.log('[OpenCodeAdapter] starting opencode serve...');
   const child = Bun.spawn(
     ['opencode', 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
     {
@@ -279,13 +279,13 @@ export async function startOpenCodeServer(): Promise<void> {
   const timeout = 15000;
   while (Date.now() - start < timeout) {
     if (child.exitCode !== undefined && child.exitCode !== null) {
-      throw new Error(`OpenCode 进程异常退出，exitCode=${child.exitCode}`);
+      throw new Error(`OpenCode process exited unexpectedly, exitCode=${child.exitCode}`);
     }
     try {
       const res = await fetch(`${OC_URL}/global/health`, { signal: AbortSignal.timeout(2000) });
       if (res.ok) {
         _ocProcess = child;
-        console.log(`[OpenCodeAdapter] 服务启动成功 (PID=${child.pid}, ${OC_URL})`);
+        console.log(`[OpenCodeAdapter] Service started successfully (PID=${child.pid}, ${OC_URL})`);
         return;
       }
     } catch {}
@@ -294,13 +294,13 @@ export async function startOpenCodeServer(): Promise<void> {
 
   // 超时
   child.kill('SIGTERM');
-  throw new Error(`OpenCode 服务启动超时 (${timeout}ms)`);
+  throw new Error(`OpenCode service startup timed out (${timeout}ms)`);
 }
 
 /** 停止 OpenCode serve 进程 */
 export async function stopOpenCodeServer(): Promise<void> {
   if (_ocProcess) {
-    console.log('[OpenCodeAdapter] 停止 OpenCode 服务...');
+    console.log('[OpenCodeAdapter] stopping OpenCode service...');
     _ocProcess.kill('SIGTERM');
     await new Promise(r => setTimeout(r, 1000));
     _ocProcess = null;

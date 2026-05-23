@@ -154,12 +154,12 @@ async function ilinkPost(endpoint: string, body: any, token?: string): Promise<a
         try {
           resolve(JSON.parse(data));
         } catch {
-          reject(new Error(`解析响应失败: ${data.slice(0, 200)}`));
+          reject(new Error(`Failed to parse response: ${data.slice(0, 200)}`));
         }
       });
     });
     req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('request timeout')); });
     req.write(bodyStr);
     req.end();
   });
@@ -188,7 +188,7 @@ async function ilinkGet(endpoint: string, token?: string): Promise<any> {
         try {
           resolve(JSON.parse(data));
         } catch {
-          reject(new Error(`解析响应失败: ${data.slice(0, 200)}`));
+          reject(new Error(`Failed to parse response: ${data.slice(0, 200)}`));
         }
       });
     }).on('error', reject).on('timeout', reject);
@@ -287,7 +287,7 @@ async function getBotQrcode(localTokenList: string[], token?: string): Promise<{
     local_token_list: localTokenList,
   }, token);
   if (result.ret !== 0 || !result.qrcode) {
-    throw new Error(`获取二维码失败: ${JSON.stringify(result).slice(0, 200)}`);
+    throw new Error(`Failed to get QR code: ${JSON.stringify(result).slice(0, 200)}`);
   }
   return { qrcode: result.qrcode, qrcode_img_content: result.qrcode_img_content };
 }
@@ -326,8 +326,8 @@ async function renderQR(qrContent: string): Promise<void> {
  * 返回 ilink_bot_id, bot_token, ilink_user_id
  */
 export async function bindWechatQR(): Promise<{ botId: string; botToken: string; ilinkUserId: string }> {
-  console.log('\n📱 微信扫码绑定');
-  console.log('正在获取二维码...');
+  console.log('\n📱 WeChat QR Code Binding');
+  console.log('Fetching QR code...');
 
   let refreshCount = 0;
   let currentToken: string | undefined;
@@ -335,9 +335,9 @@ export async function bindWechatQR(): Promise<{ botId: string; botToken: string;
   while (refreshCount < MAX_QR_REFRESH) {
     const { qrcode, qrcode_img_content } = await getBotQrcode([], currentToken);
 
-    console.log('请使用微信扫描以下二维码：');
+    console.log('Please scan the following QR code with WeChat:');
     await renderQR(qrcode_img_content || qrcode);
-    console.log('等待扫码中...');
+    console.log('Waiting for scan...');
 
     const start = Date.now();
     while (Date.now() - start < QR_POLL_TIMEOUT_MS) {
@@ -345,7 +345,7 @@ export async function bindWechatQR(): Promise<{ botId: string; botToken: string;
 
       switch (statusResult.status) {
         case 'confirmed':
-          console.log('\n✅ 扫码成功！');
+          console.log('\n✅ QR scan successful!');
           const creds: StoredCreds = {
             botId: statusResult.ilink_bot_id!,
             botToken: statusResult.bot_token!,
@@ -372,15 +372,15 @@ export async function bindWechatQR(): Promise<{ botId: string; botToken: string;
           break;
 
         case 'need_verifycode':
-          console.log('\n⚠️ 需要输入配对码（手机微信显示的数字）');
-          console.log('此功能暂不支持自动处理，请在手机上完成验证后重试');
-          throw new Error('需要配对码验证');
+          console.log('\n⚠️ Pairing code required (number shown on phone WeChat)');
+          console.log('This feature does not support automatic handling yet, please verify on phone and retry');
+          throw new Error('Pairing code verification required');
 
         case 'verify_code_blocked':
-          throw new Error('配对码多次错误，请重新扫码');
+          throw new Error('Pairing code entered incorrectly too many times, please re-scan');
 
         case 'expired':
-          console.log('\n⏱ 二维码过期，刷新中...');
+          console.log('\n⏱ QR code expired, refreshing...');
           refreshCount++;
           break;
 
@@ -393,10 +393,10 @@ export async function bindWechatQR(): Promise<{ botId: string; botToken: string;
     }
 
     refreshCount++;
-    console.log('\n⏱ 扫码超时，刷新二维码...');
+    console.log('\n⏱ QR scan timed out, refreshing QR code...');
   }
 
-  console.log('\n❌ 二维码刷新次数超限，请重试');
+  console.log('\n❌ QR code refresh limit exceeded, please retry');
   process.exit(1);
 }
 
@@ -459,7 +459,7 @@ export class WeChatIMModule implements IMModule {
   getCapabilities(): IMCapabilities {
     return {
       text: true,
-      codeBlock: false,       // 微信不支持代码块
+      codeBlock: false,       // WeChat doesn't support code blocks
       cardMessage: false,
       fileSend: true,
       imageSend: true,
@@ -473,7 +473,7 @@ export class WeChatIMModule implements IMModule {
 
   start(handler: MessageHandler): void {
     if (this.running) {
-      console.warn('[WeChat] 已在运行中');
+      console.warn('[WeChat] Already running');
       return;
     }
     this.handler = handler;
@@ -486,7 +486,7 @@ export class WeChatIMModule implements IMModule {
     if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null; }
     this._notifyStop().catch(() => {});
     this.handler = null;
-    console.log('[WeChat] 已断开');
+    console.log('[WeChat] Disconnected');
   }
 
   // ── 连接 & 认证 ──
@@ -503,12 +503,12 @@ export class WeChatIMModule implements IMModule {
         this.botId = stored.botId;
         this.botToken = stored.botToken;
         this.ilinkUserId = stored.ilinkUserId;
-        console.log('[WeChat] 已加载本地凭证');
+        console.log('[WeChat] Loaded local credentials');
       }
     }
 
     if (!this.botId || !this.botToken) {
-      console.log('[WeChat] 未找到凭证，启动扫码绑定...');
+      console.log('[WeChat] No credentials found, starting QR binding...');
       const bound = await bindWechatQR();
       this.botId = bound.botId;
       this.botToken = bound.botToken;
@@ -518,9 +518,9 @@ export class WeChatIMModule implements IMModule {
     // 2. 加载 context_token
     this.contextTokens = new Map(Object.entries(loadContextTokens()));
 
-    console.log(`[WeChat] 已认证 (bot: ${this.botId.slice(0, 8)}...)`);
+    console.log(`[WeChat] Authenticated (bot: ${this.botId.slice(0, 8)}...)`);
 
-    // 3. 通知上线
+    // 3. Notify online
     await this._notifyStart();
 
     // 4. 启动 long-poll
@@ -534,9 +534,9 @@ export class WeChatIMModule implements IMModule {
       await ilinkPost('ilink/bot/msg/notifystart', {
         base_info: { channel_version: CHANNEL_VERSION, bot_agent: 'IMtoAgent' },
       }, this.botToken);
-      console.log('[WeChat] 已通知上线');
+      console.log('[WeChat] Notified online');
     } catch (e: any) {
-      console.warn(`[WeChat] 通知上线失败: ${e.message}`);
+      console.warn(`[WeChat] Failed to notify online: ${e.message}`);
     }
   }
 
@@ -557,13 +557,13 @@ export class WeChatIMModule implements IMModule {
     // 检查 session 是否暂停（过期冷却）
     if (Date.now() < this.sessionPausedUntil) {
       const remaining = Math.ceil((this.sessionPausedUntil - Date.now()) / 1000);
-      console.log(`[WeChat] Session 冷却中，剩余 ${remaining}s`);
+      console.log(`[WeChat] Session cooling down, ${remaining}s remaining`);
       this.pollTimer = setTimeout(() => this._pollLoop(), Math.min(remaining * 1000, 60000));
       return;
     }
 
     this._pollOnce().catch(e => {
-      console.error(`[WeChat] 轮询错误: ${e.message}`);
+      console.error(`[WeChat] Poll error: ${e.message}`);
       if (this.running) {
         this.pollTimer = setTimeout(() => this._pollLoop(), LONGPOLL_RETRY_DELAY_MS);
       }
@@ -579,15 +579,15 @@ export class WeChatIMModule implements IMModule {
     }, this.botToken);
 
     if (result.ret === -14) {
-      // Session 过期，暂停 1 小时
-      console.error('[WeChat] ⚠️ Session 过期，暂停 1 小时后重试');
+      // Session expired, pause for 1 hour
+      console.error('[WeChat] ⚠️ Session expired, pausing for 1 hour');
       this.sessionPausedUntil = Date.now() + SESSION_PAUSE_MS;
       this.pollTimer = setTimeout(() => this._pollLoop(), SESSION_PAUSE_MS);
       return;
     }
 
     if (result.ret !== 0) {
-      throw new Error(`getupdates 错误: ret=${result.ret} ${result.errmsg || ''}`);
+      throw new Error(`getupdates error: ret=${result.ret} ${result.errmsg || ''}`);
     }
 
     // 保存续传 buf
@@ -601,7 +601,7 @@ export class WeChatIMModule implements IMModule {
         try {
           await this._handleMessage(msg);
         } catch (e: any) {
-          console.error(`[WeChat] 消息处理异常: ${e.message}`);
+          console.error(`[WeChat] Message processing error: ${e.message}`);
         }
       }
     }
@@ -638,7 +638,7 @@ export class WeChatIMModule implements IMModule {
           break;
 
         case MessageItemType.IMAGE:
-          text += text ? ' [图片]' : '[图片]';
+          text += text ? ' [Image]' : '[Image]';
           if (item.image_item?.media) {
             const localPath = await this._downloadMedia(item.image_item.media, item.image_item.aeskey, 'image.png');
             if (localPath) {
@@ -648,7 +648,7 @@ export class WeChatIMModule implements IMModule {
           break;
 
         case MessageItemType.VOICE:
-          text += text ? ' [语音]' : '[语音]';
+          text += text ? ' [Voice]' : '[Voice]';
           if (item.voice_item?.media) {
             const localPath = await this._downloadMedia(item.voice_item.media, item.voice_item.aeskey, 'voice.silk');
             if (localPath) {
@@ -658,7 +658,7 @@ export class WeChatIMModule implements IMModule {
           break;
 
         case MessageItemType.FILE:
-          text += text ? ' [文件]' : '[文件]';
+          text += text ? ' [File]' : '[File]';
           if (item.file_item?.media) {
             const localPath = await this._downloadMedia(item.file_item.media, item.file_item.aeskey, 'file');
             if (localPath) {
@@ -668,7 +668,7 @@ export class WeChatIMModule implements IMModule {
           break;
 
         case MessageItemType.VIDEO:
-          text += text ? ' [视频]' : '[视频]';
+          text += text ? ' [Video]' : '[Video]';
           if (item.video_item?.media) {
             const localPath = await this._downloadMedia(item.video_item.media, item.video_item.aeskey, 'video.mp4');
             if (localPath) {
@@ -680,7 +680,7 @@ export class WeChatIMModule implements IMModule {
     }
 
     const preview = text.length > 80 ? text.slice(0, 80) + '...' : text;
-    console.log(`[WeChat] 私聊 ${userId.slice(0, 12)}...: ${preview}`);
+    console.log(`[WeChat] DM ${userId.slice(0, 12)}...: ${preview}`);
 
     // 保存 frame 用于被动回复
     this.pendingFrames.set(chatId, msg);
@@ -699,7 +699,7 @@ export class WeChatIMModule implements IMModule {
 
   async reply(chatId: string, text: string, maxLen?: number): Promise<void> {
     const max = maxLen || TEXT_MAX;
-    const safe = text.length > max ? text.slice(0, max) + '\n…截断' : text;
+    const safe = text.length > max ? text.slice(0, max) + '\n…truncated' : text;
     await this._sendMessage(chatId, [
       { type: MessageItemType.TEXT, text_item: { text: safe } },
     ]);
@@ -724,7 +724,7 @@ export class WeChatIMModule implements IMModule {
         // 发送 thinking 阶段结束信号
         await this._sendStreamSignal(state.streamTicket, 'thinking', true);
       } catch (e: any) {
-        console.error(`[WeChat] 流式初始化失败，降级为普通回复: ${e.message}`);
+        console.error(`[WeChat] Stream init failed, falling back to normal reply: ${e.message}`);
         await this.reply(chatId, content);
         return;
       }
@@ -785,7 +785,7 @@ export class WeChatIMModule implements IMModule {
             try {
               await this._sendImageFromSource(chatId, b.url, b.title || 'image.png');
             } catch (e: any) {
-              console.error(`[WeChat] 图片发送失败: ${e.message}`);
+              console.error(`[WeChat] Image send failed: ${e.message}`);
             }
           }
           break;
@@ -794,7 +794,7 @@ export class WeChatIMModule implements IMModule {
             try {
               await this._sendFileFromSource(chatId, b.url, b.title || b.filename || 'file');
             } catch (e: any) {
-              console.error(`[WeChat] 文件发送失败: ${e.message}`);
+              console.error(`[WeChat] File send failed: ${e.message}`);
             }
           }
           break;
@@ -807,7 +807,7 @@ export class WeChatIMModule implements IMModule {
     try {
       await this._sendImageFromSource(chatId, imageKey, this._basename(imageKey));
     } catch (e: any) {
-      console.error(`[WeChat] 图片发送失败: ${e.message}`);
+      console.error(`[WeChat] Image send failed: ${e.message}`);
     }
   }
 
@@ -815,7 +815,7 @@ export class WeChatIMModule implements IMModule {
     try {
       await this._sendFileFromSource(chatId, fileKey, fileName);
     } catch (e: any) {
-      console.error(`[WeChat] 文件发送失败: ${e.message}`);
+      console.error(`[WeChat] File send failed: ${e.message}`);
     }
   }
 
@@ -839,18 +839,18 @@ export class WeChatIMModule implements IMModule {
     try {
       await ilinkPost('ilink/bot/sendmessage', body, this.botToken);
     } catch (e: any) {
-      console.error(`[WeChat] 发送失败: ${e.message}`);
+      console.error(`[WeChat] Send failed: ${e.message}`);
     }
   }
 
-  // ── 流式相关 ──
+  // ── Streaming ──
 
   private async _initStream(): Promise<string> {
     const result = await ilinkPost('ilink/bot/init_stream', {
       base_info: { channel_version: CHANNEL_VERSION, bot_agent: 'IMtoAgent' },
     }, this.botToken);
     if (result.ret !== 0 || !result.stream_ticket) {
-      throw new Error(`initStream 失败: ${JSON.stringify(result).slice(0, 200)}`);
+      throw new Error(`initStream failed: ${JSON.stringify(result).slice(0, 200)}`);
     }
     return result.stream_ticket;
   }
@@ -886,7 +886,7 @@ export class WeChatIMModule implements IMModule {
       } else if (media.encrypt_query_param) {
         downloadUrl = `${CDN_BASE}?${media.encrypt_query_param}`;
       } else {
-        console.error('[WeChat] 媒体下载：无可用 URL');
+        console.error('[WeChat] Media download: no URL available');
         return null;
       }
 
@@ -916,10 +916,10 @@ export class WeChatIMModule implements IMModule {
       fs.mkdirSync(MEDIA_DIR, { recursive: true });
       const filePath = path.join(MEDIA_DIR, `${Date.now()}_${fallbackName}`);
       fs.writeFileSync(filePath, decrypted);
-      console.log(`[WeChat] 媒体下载完成: ${filePath}`);
+      console.log(`[WeChat] Media downloaded: ${filePath}`);
       return filePath;
     } catch (e: any) {
-      console.error(`[WeChat] 媒体下载失败: ${e.message}`);
+      console.error(`[WeChat] Media download failed: ${e.message}`);
       return null;
     }
   }
@@ -945,12 +945,12 @@ export class WeChatIMModule implements IMModule {
       }, this.botToken);
 
       if (uploadResult.ret !== 0) {
-        throw new Error(`getUploadUrl 失败: ${JSON.stringify(uploadResult).slice(0, 200)}`);
+        throw new Error(`getUploadUrl failed: ${JSON.stringify(uploadResult).slice(0, 200)}`);
       }
 
       const uploadUrl = uploadResult.upload_full_url || uploadResult.upload_url;
       if (!uploadUrl) {
-        throw new Error('未获取到上传 URL');
+        throw new Error('Failed to get upload URL');
       }
 
       // 3. 上传加密文件到 CDN
@@ -960,7 +960,7 @@ export class WeChatIMModule implements IMModule {
       const encryptQuery = uploadResult.encrypt_query_param || uploadResult.encrypt_query;
       return { encryptQuery, aesKey, fileKey };
     } catch (e: any) {
-      console.error(`[WeChat] 媒体上传失败: ${e.message}`);
+      console.error(`[WeChat] Media upload failed: ${e.message}`);
       return null;
     }
   }
@@ -984,12 +984,12 @@ export class WeChatIMModule implements IMModule {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             resolve();
           } else {
-            reject(new Error(`CDN 上传失败: HTTP ${res.statusCode} ${data.slice(0, 100)}`));
+            reject(new Error(`CDN upload failed: HTTP ${res.statusCode} ${data.slice(0, 100)}`));
           }
         });
       });
       req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('CDN 上传超时')); });
+      req.on('timeout', () => { req.destroy(); reject(new Error('CDN upload timed out')); });
       req.write(buffer);
       req.end();
     });
@@ -1058,7 +1058,7 @@ export class WeChatIMModule implements IMModule {
       return fs.readFileSync(source);
     }
 
-    console.error(`[WeChat] 文件不存在: ${source}`);
+    console.error(`[WeChat] File not found: ${source}`);
     return null;
   }
 

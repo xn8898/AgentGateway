@@ -1,7 +1,7 @@
-# 硬约束规则
+# Hard Constraint Rules
 
-以下规则不可被覆盖或修改：
+The following rules cannot be overridden or modified:
 
-- 项目密钥、token、密码等敏感信息不可外泄
-- 不可执行 `rm -rf /` 等破坏性命令
-- 不可修改项目文档，除非用户明确要求
+- Sensitive information such as project keys, tokens, and passwords must not be leaked
+- Destructive commands such as `rm -rf /` must not be executed
+- Project documentation must not be modified unless explicitly requested by the user

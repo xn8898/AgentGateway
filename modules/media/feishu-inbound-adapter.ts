@@ -44,7 +44,7 @@ export class FeishuInboundAdapter implements InboundMediaAdapter {
       if (!resp.ok) {
         // 容错：文件类型 502 时尝试用 media 类型重试
         if (resp.status === 502 && type === 'file') {
-          console.log(`[FeishuInbound] file 类型返回 502，尝试 media 类型重试`);
+          console.log(`[FeishuInbound] file type returned 502, retrying with media type`);
           const retryUrl = `https://open.feishu.cn/open-apis/im/v1/messages/${messageId}/resources/${resourceKey}?type=media`;
           const retryResp = await fetch(retryUrl, {
             headers: { Authorization: `Bearer ${token}` },
@@ -60,7 +60,7 @@ export class FeishuInboundAdapter implements InboundMediaAdapter {
             };
           }
         }
-        console.error(`[FeishuInbound] 下载消息资源失败: HTTP ${resp.status} (key=${resourceKey})`);
+        console.error(`[FeishuInbound] download message resource failed: HTTP ${resp.status} (key=${resourceKey})`);
         return null;
       }
 
@@ -74,7 +74,7 @@ export class FeishuInboundAdapter implements InboundMediaAdapter {
         sourceKey: resourceKey,
       };
     } catch (e: any) {
-      console.error(`[FeishuInbound] 下载消息资源异常: ${e.message}`);
+      console.error(`[FeishuInbound] download message resource exception: ${e.message}`);
       return null;
     }
   }
@@ -97,7 +97,7 @@ export class FeishuInboundAdapter implements InboundMediaAdapter {
 
     const data = await resp.json();
     if (data.code !== 0 || !data.tenant_access_token) {
-      throw new Error(`获取飞书 tenant_access_token 失败: ${JSON.stringify(data)}`);
+      throw new Error(`Failed to get Feishu tenant_access_token: ${JSON.stringify(data)}`);
     }
 
     this._appToken = data.tenant_access_token;

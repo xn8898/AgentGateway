@@ -88,32 +88,32 @@ export function buildSystemPrompt(ctx: PromptBuilderContext): string {
   // 2. IM 能力
   const caps = ctx.imModule?.getCapabilities() ?? ctx.caps ?? DEFAULT_TERMINAL_CAPS;
   const capSection = buildCapabilityPrompt(caps);
-  sections.push('# 当前对接 IM 能力\n\n' + capSection);
+  sections.push('# Current IM Capabilities\n\n' + capSection);
 
-  // 3. 网关运行日志（Agent 可主动查询）
-  sections.push(`# 网关运行日志
+  // 3. Gateway logs (Agent can proactively query)
+  sections.push(`# Gateway Runtime Logs
 
-网关运行日志: ~/.imtoagent/logs/imtoagent.log
+Gateway runtime logs: ~/.imtoagent/logs/imtoagent.log
 
-你可以通过查看日志来了解网关状态、排查问题、感知重启事件：
-- \`tail -n 30 ~/.imtoagent/logs/imtoagent.log\` — 最近 30 行
-- \`grep -i "restart\|reload\|shutdown\|SIGTERM" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — 重启/关闭记录
-- \`grep -i "error\|fail\|crash" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — 错误记录
-- \`grep -i "online\|connected\|disconnected" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Bot 连接状态
+You can check logs to understand gateway status, troubleshoot issues, and detect restart events:
+- \`tail -n 30 ~/.imtoagent/logs/imtoagent.log\` — Last 30 lines
+- \`grep -i "restart\|reload\|shutdown\|SIGTERM" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Restart/shutdown records
+- \`grep -i "error\|fail\|crash" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Error records
+- \`grep -i "online\|connected\|disconnected" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Bot connection status
 
-注意：你启动后第一条消息的对话记忆可能已丢失（如果网关重启过），请先检查日志了解上下文。`);
+Note: Your first message after startup may have lost conversation memory (if the gateway restarted). Check logs first to understand the context.`);
 
   // 4. Soul
   const soul = loadSoul(ctx.botName);
   if (soul) {
-    sections.push('# 用户自定义指令 (IMtoAgent Soul)\n\n' + soul);
+    sections.push('# User-Defined Instructions (IMtoAgent Soul)\n\n' + soul);
   }
 
   return sections.join('\n\n---\n\n');
 }
 
 // ================================================================
-// 便捷函数：直接获取能力（消除各处 inline fallback）
+// Convenience: resolve capabilities directly (eliminate inline fallbacks)
 // ================================================================
 export function resolveCapabilities(
   imModule?: { getCapabilities(): IMCapabilities } | null,

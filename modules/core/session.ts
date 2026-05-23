@@ -139,7 +139,7 @@ export class FileSessionManager implements SessionManager {
           session = this.createNewSession(chatId, userId);
         }
       } catch (e: any) {
-        console.error(`[Session] 加载 ${chatId} 失败: ${e.message}，创建新会话`);
+        console.error(`[Session] Failed to load ${chatId}: ${e.message}, creating new session`);
         session = this.createNewSession(chatId, userId);
       }
     } else {
@@ -207,7 +207,7 @@ export class FileSessionManager implements SessionManager {
     try {
       fs.writeFileSync(filePath, JSON.stringify(output, null, 2));
     } catch (e: any) {
-      console.error(`[Session] 持久化 ${session.chatId} 失败: ${e.message}`);
+      console.error(`[Session] Failed to persist ${session.chatId}: ${e.message}`);
     }
   }
 
@@ -225,7 +225,7 @@ export class FileSessionManager implements SessionManager {
         fs.unlinkSync(filePath);
       }
     } catch (e: any) {
-      console.error(`[Session] 删除 ${chatId} 失败: ${e.message}`);
+      console.error(`[Session] Failed to delete ${chatId}: ${e.message}`);
     }
   }
 
@@ -244,7 +244,7 @@ export class FileSessionManager implements SessionManager {
 
     for (const chatId of toRemove) {
       botCache.delete(chatId);
-      console.log(`[Session] 清理空闲会话: ${chatId}`);
+      console.log(`[Session] Cleaning up idle session: ${chatId}`);
     }
   }
 

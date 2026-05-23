@@ -1,10 +1,10 @@
-# imtoagent — IM ↔ Agent 统一网关
+# imtoagent — IM ↔ Agent Unified Gateway
 
-将飞书、Telegram、个人微信、企业微信对接到 Claude Code、Codex (GPT)、OpenCode 等 AI 编程 Agent。
+Connect Feishu, Telegram, personal WeChat, and WeCom to AI coding agents like Claude Code, Codex (GPT), OpenCode, and more.
 
-一个网关，多个 IM，多种 Agent，统一端口代理。
+One gateway, multiple IMs, multiple agents, unified port proxy.
 
-## 架构
+## Architecture
 
 ```
 飞书/Telegram/微信/企微 → IM Registry 工厂 → Bot 实例
@@ -12,48 +12,48 @@
                                                              → 统一 Proxy (:18899) → 上游模型
 ```
 
-### 已支持的 IM 适配器
+### Supported IM Adapters
 
-| IM | 连接方式 | 能力 |
+| IM | Connection | Capabilities |
 |----|----------|------|
-| **飞书** | WebSocket 长连接 + 自动重连 | 文本、代码块、卡片、文件、图片、语音、按钮 |
-| **Telegram** | 长轮询 + HTTP 代理 | 文本、文件、图片、语音 |
-| **个人微信** | iLink HTTP long-poll + QR 扫码 | 文本、图片、文件、语音（AES-128-ECB 加密） |
-| **企业微信** | HTTP Webhook 回调 + REST API | 文本、文件、图片 |
+| **Feishu** | WebSocket persistent connection + auto-reconnect | Text, code blocks, cards, files, images, voice, buttons |
+| **Telegram** | Long polling + HTTP proxy | Text, files, images, voice |
+| **Personal WeChat** | iLink HTTP long-poll + QR scan | Text, images, files, voice (AES-128-ECB encrypted) |
+| **WeCom** | HTTP Webhook callback + REST API | Text, files, images |
 
-### 已支持的 Agent 后端
+### Supported Agent Backends
 
-| 后端 | 对接方式 |
+| Backend | Integration Method |
 |------|----------|
-| **Claude Code** | Claude Agent SDK spawn 子进程 |
+| **Claude Code** | Claude Agent SDK spawn subprocess |
 | **Codex** | app-server v2 (stdio JSON-RPC) |
 | **OpenCode** | HTTP API client |
 
-## 快速开始
+## Quick Start
 
-### 前置条件
+### Prerequisites
 
-- **Bun** 运行时（≥1.0.0）：`brew install oven-sh/bun/bun`
+- **Bun** runtime (≥1.0.0): `brew install oven-sh/bun/bun`
 - **macOS / Linux**
-- **至少一个 Agent 后端**（见下表，安装 imtoagent 前或后安装均可）
+- **At least one Agent backend** (see table below; can be installed before or after imtoagent)
 
-| 后端 | 安装命令 |
+| Backend | Install Command |
 |------|----------|
 | Claude Code | `npm install -g @anthropic-ai/claude-agent-sdk` |
 | Codex | `npm install -g @openai/codex` |
 | OpenCode | `npm install -g opencode` |
 
-### 安装
+### Installation
 
-#### 方式一：npm 全局安装（推荐）
+#### Method 1: npm global install (recommended)
 
 ```bash
 npm install -g imtoagent
 ```
 
-安装完成后自动检测是否需要初始配置，交互式终端会自动引导进入配置向导。
+After installation, it automatically checks whether initial configuration is needed. An interactive terminal will guide you through the setup wizard.
 
-#### 方式二：源码安装
+#### Method 2: Source install
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/imtoagent.git
@@ -62,47 +62,47 @@ bun install
 bun run bin/imtoagent setup
 ```
 
-### 首次配置
+### First-Time Configuration
 
 ```bash
 imtoagent setup
 ```
 
-交互式配置向导引导你完成：
+The interactive setup wizard guides you through:
 
-1. **配置 Bot** — 选择 IM 平台 + Agent 后端
-2. **配置模型供应商** — 添加 API 凭证（DeepSeek、Dashscope 等）
-3. **生成灵魂文件** — 为每个 Bot 创建 rules.md / identity.md 等
-4. **写入配置文件** — 自动生成 `~/.imtoagent/config.json`
+1. **Configure Bot** — Select IM platform + Agent backend
+2. **Configure Model Providers** — Add API credentials (DeepSeek, Dashscope, etc.)
+3. **Generate Soul Files** — Create rules.md / identity.md etc. for each Bot
+4. **Write Config Files** — Auto-generate `~/.imtoagent/config.json`
 
-#### 飞书 Bot 需要
+#### Feishu Bot Requirements
 
-- 飞书 App ID（`cli_...`）
-- 飞书 App Secret
-- 飞书应用需开启：机器人、事件订阅、消息收发权限
+- Feishu App ID (`cli_...`)
+- Feishu App Secret
+- Feishu app must enable: Bot, Event Subscription, Message Send/Receive permissions
 
-#### Telegram Bot 需要
+#### Telegram Bot Requirements
 
-- Telegram Bot Token（从 @BotFather 获取）
-- 可选：代理地址（如 `http://127.0.0.1:7890`）
+- Telegram Bot Token (obtain from @BotFather)
+- Optional: Proxy address (e.g., `http://127.0.0.1:7890`)
 
-#### 个人微信
+#### Personal WeChat
 
-- 首次运行 `imtoagent start` 后自动弹出 QR 码
-- 用手机微信扫码完成绑定
+- QR code automatically pops up on first run of `imtoagent start`
+- Scan with your phone's WeChat to complete binding
 
-### 启动网关
+### Start the Gateway
 
 ```bash
-imtoagent start     # 后台启动
-imtoagent status    # 查看运行状态
-imtoagent stop      # 停止网关
+imtoagent start     # Start in background
+imtoagent status    # Check running status
+imtoagent stop      # Stop the gateway
 ```
 
-### 开机自启（macOS launchd）
+### Auto-Start on Boot (macOS launchd)
 
 ```bash
-# 创建 launchd 配置
+# Create launchd configuration
 cat > ~/Library/LaunchAgents/com.imtoagent.plist << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -134,69 +134,69 @@ cat > ~/Library/LaunchAgents/com.imtoagent.plist << 'EOF'
 </plist>
 EOF
 
-# 加载
+# Load
 launchctl load ~/Library/LaunchAgents/com.imtoagent.plist
 ```
 
-### 常用命令
+### Common Commands
 
-| 命令 | 说明 |
+| Command | Description |
 |------|------|
-| `imtoagent setup` | 交互式配置向导 |
-| `imtoagent start` | 后台启动网关 |
-| `imtoagent stop` | 停止网关 |
-| `imtoagent status` | 查看运行状态 |
-| `imtoagent restore` | 热重载恢复 |
-| `imtoagent daemon` | 前台守护模式（适合 launchd/systemd 托管） |
+| `imtoagent setup` | Interactive setup wizard |
+| `imtoagent start` | Start gateway in background |
+| `imtoagent stop` | Stop the gateway |
+| `imtoagent status` | Check running status |
+| `imtoagent restore` | Hot reload recovery |
+| `imtoagent daemon` | Foreground daemon mode (suitable for launchd/systemd) |
 
-### 网关内建命令
+### Built-In Gateway Commands
 
-在 IM 聊天中发送给 Bot：
+Send to the Bot in IM chat:
 
-| 命令 | 说明 |
+| Command | Description |
 |------|------|
-| `/help` | 帮助信息 |
-| `/status` | 网关状态 |
-| `/stats` | 使用统计 |
-| `/model` | 切换模型 |
-| `/providers` | 查看供应商 |
-| `/memory` | 查看记忆 |
-| `/soul` | 灵魂管理 |
-| `/reload` | 重新加载 |
-| `/clear` | 清除会话 |
-| `/mode` | 切换模式（权限/auto/plan） |
-| `/dir` | 切换工作目录 |
+| `/help` | Help information |
+| `/status` | Gateway status |
+| `/stats` | Usage statistics |
+| `/model` | Switch model |
+| `/providers` | View providers |
+| `/memory` | View memory |
+| `/soul` | Soul management |
+| `/reload` | Reload |
+| `/clear` | Clear session |
+| `/mode` | Switch mode (permission/auto/plan) |
+| `/dir` | Switch working directory |
 
-## 项目结构
+## Project Structure
 
 ```
 imtoagent/
-├── index.ts                    # 入口 — IM Registry + Bot 构造 + Proxy 启动
-├── bin/imtoagent               # CLI 命令入口
+├── index.ts                    # Entry — IM Registry + Bot construction + Proxy startup
+├── bin/imtoagent               # CLI command entry point
 ├── modules/
 │   ├── core/                   # SDK Core
-│   │   ├── AgentRuntime.ts     # 消息处理中枢
-│   │   ├── AgentAdapter.ts     # Agent 后端统一抽象
-│   │   ├── SessionManager.ts   # 会话持久化
-│   │   └── types.ts            # 类型定义
-│   ├── im/                     # IM 适配器
-│   │   ├── feishu.ts           # 飞书
+│   │   ├── AgentRuntime.ts     # Message processing hub
+│   │   ├── AgentAdapter.ts     # Unified Agent backend abstraction
+│   │   ├── SessionManager.ts   # Session persistence
+│   │   └── types.ts            # Type definitions
+│   ├── im/                     # IM adapters
+│   │   ├── feishu.ts           # Feishu
 │   │   ├── telegram.ts         # Telegram
-│   │   ├── wechat.ts           # 个人微信
-│   │   └── wecom.ts            # 企业微信
-│   ├── agent/                  # Agent 后端
+│   │   ├── wechat.ts           # Personal WeChat
+│   │   └── wecom.ts            # WeCom
+│   ├── agent/                  # Agent backends
 │   │   ├── claude-adapter.ts   # Claude Code
 │   │   ├── codex-adapter.ts    # Codex
 │   │   └── opencode-adapter.ts # OpenCode
-│   ├── proxy/                  # 统一代理
-│   │   └── anthropic-proxy.ts  # :18899 Anthropic 格式代理
+│   ├── proxy/                  # Unified proxy
+│   │   └── anthropic-proxy.ts  # :18899 Anthropic format proxy
 │   ├── cli/                    # CLI
-│   │   └── setup.ts            # 交互式配置向导
+│   │   └── setup.ts            # Interactive setup wizard
 │   └── utils/
-│       └── paths.ts            # 路径解析 + 自动初始化
+│       └── paths.ts            # Path resolution + auto-init
 ├── scripts/
-│   └── postinstall.ts          # npm 安装后引导
-├── templates/                  # 配置模板
+│   └── postinstall.ts          # Post-npm-install guidance
+├── templates/                  # Config templates
 │   ├── config.template.json
 │   ├── providers.template.json
 │   ├── opencode.template.json
@@ -204,29 +204,29 @@ imtoagent/
 └── README.md
 ```
 
-## 数据目录
+## Data Directory
 
-所有运行时数据统一存储在 `~/.imtoagent/`：
+All runtime data is stored centrally in `~/.imtoagent/`:
 
 ```
 ~/.imtoagent/
-├── config.json          # 主配置（Bot + 供应商 + 系统）
-├── providers.json       # 模型供应商配置
-├── opencode.json        # OpenCode 配置
-├── sessions/            # 会话持久化
-├── logs/                # 运行日志
-└── soul/                # 灵魂文件（每 Bot 一个目录）
+├── config.json          # Main config (Bot + providers + system)
+├── providers.json       # Model provider config
+├── opencode.json        # OpenCode config
+├── sessions/            # Session persistence
+├── logs/                # Runtime logs
+└── soul/                # Soul files (one directory per Bot)
     ├── ClaudeBot/
     ├── CodexBot/
     └── ...
 ```
 
-## 开发
+## Development
 
 ```bash
 bun install
-bun run index.ts          # 直接运行
-bun run bin/imtoagent setup  # 运行配置向导
+bun run index.ts          # Run directly
+bun run bin/imtoagent setup  # Run setup wizard
 ```
 
 ## License

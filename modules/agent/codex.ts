@@ -19,14 +19,14 @@ interface CodexJsonEvent {
 }
 
 const TOOL_NAMES: Record<string, string> = {
-  Bash: '执行命令', Read: '读取文件', Edit: '编辑文件', Write: '写入文件',
-  Glob: '搜索文件', Grep: '搜索内容', WebSearch: '搜索网页', WebFetch: '抓取网页',
-  NotebookEdit: '编辑 Notebook',
-  // Codex 工具名
-  command_execution: '执行命令', exec_command: '执行命令', write_stdin: '写入文件', update_plan: '更新计划',
-  request_user_input: '请求输入', apply_patch: '应用补丁', view_image: '查看图片',
-  spawn_agent: '启动代理', send_input: '发送输入', resume_agent: '恢复代理',
-  wait_agent: '等待代理', close_agent: '关闭代理',
+  Bash: 'Execute command', Read: 'Read file', Edit: 'Edit file', Write: 'Write file',
+  Glob: 'Search files', Grep: 'Search content', WebSearch: 'Web search', WebFetch: 'Fetch webpage',
+  NotebookEdit: 'Edit Notebook',
+  // Codex tool names
+  command_execution: 'Execute command', exec_command: 'Execute command', write_stdin: 'Write to stdin', update_plan: 'Update plan',
+  request_user_input: 'Request input', apply_patch: 'Apply patch', view_image: 'View image',
+  spawn_agent: 'Spawn agent', send_input: 'Send input', resume_agent: 'Resume agent',
+  wait_agent: 'Wait agent', close_agent: 'Close agent',
 };
 
 // ================================================================
@@ -64,17 +64,17 @@ async function spawnCodexExec(
     cwd, stdout: 'pipe', stderr: 'pipe',
   });
 
-  // 安全读取 stdout/stderr：捕获子进程被 kill 等异常，确保 reject 带 Error 对象
+  // Safe read stdout/stderr: catch subprocess kill exceptions, ensure reject carries Error object
   let stdout = '', stderr = '';
   try {
     [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout 读取失败: ${e?.message || e}`); }),
-      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr 读取失败: ${e?.message || e}`); }),
+      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout read failed: ${e?.message || e}`); }),
+      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr read failed: ${e?.message || e}`); }),
     ]);
   } catch (ioErr: any) {
-    // 子进程可能已被 kill，尝试获取退出码
+    // Subprocess may have been killed, try to get exit code
     try { child.kill('SIGKILL'); } catch {}
-    throw new Error(`codex exec I/O 异常: ${ioErr.message}`);
+    throw new Error(`codex exec I/O error: ${ioErr.message}`);
   }
 
   const code = await child.exited.catch(() => -1);
@@ -97,12 +97,12 @@ async function spawnCodexResume(
   let stdout = '', stderr = '';
   try {
     [stdout, stderr] = await Promise.all([
-      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout 读取失败: ${e?.message || e}`); }),
-      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr 读取失败: ${e?.message || e}`); }),
+      new Response(child.stdout).text().catch((e: any) => { throw new Error(`stdout read failed: ${e?.message || e}`); }),
+      new Response(child.stderr).text().catch((e: any) => { throw new Error(`stderr read failed: ${e?.message || e}`); }),
     ]);
   } catch (ioErr: any) {
     try { child.kill('SIGKILL'); } catch {}
-    throw new Error(`codex exec resume I/O 异常: ${ioErr.message}`);
+    throw new Error(`codex exec resume I/O error: ${ioErr.message}`);
   }
 
   const code = await child.exited.catch(() => -1);
@@ -129,7 +129,7 @@ async function runViaAppServer(
   if (isFresh || !session.codexThreadId || threadExpired) {
     session.codexThreadId = await client.startThread(cwd);
     session._appServerGen = currentGen;
-    console.log(`[Codex] app-server 全新线程 thread=${session.codexThreadId.slice(-8)}${threadExpired ? ' (进程重启)' : ''}`);
+    console.log(`[Codex] app-server new thread=${session.codexThreadId.slice(-8)}${threadExpired ? ' (process restarted)' : ''}`);
   }
   // 后续消息直接 turn/start（同线程延续上下文）
 
@@ -143,7 +143,7 @@ async function runViaAppServer(
   for await (const event of client.receiveEvents()) {
     // 超时保护
     if (Date.now() - startTime > MAX_DURATION) {
-      console.error('[Codex] app-server 任务超时 (10min)');
+      console.error('[Codex] app-server task timed out (10min)');
       break;
     }
 
@@ -160,7 +160,7 @@ async function runViaAppServer(
         totalUsage.outputTokens += event.usage?.outputTokens || 0;
         break;
       case 'error':
-        throw new Error(`app-server 错误: ${event.error}`);
+        throw new Error(`app-server error: ${event.error}`);
     }
   }
 
@@ -193,7 +193,7 @@ export class CodexAgentModule {
     try {
       let effectiveText = text;
       if (session.codexMode === 'plan') {
-        effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${text}`;
+        effectiveText = `[Mode: Plan then execute] Please create a clear plan first, wait for my confirmation before executing. User request: ${text}`;
       }
 
       const isFresh = session.startFresh || !session.codexThreadId;
@@ -201,10 +201,10 @@ export class CodexAgentModule {
       let execServerUsage: { inputTokens: number; outputTokens: number } | null = null;
 
       session.startFresh = false;
-      await ctx.sendProgress(chatId, '💭 思考中...');
+      await ctx.sendProgress(chatId, '💭 Thinking...');
 
       // 优先尝试 app-server
-      console.error(`[${ctx.name}] DEBUG 进入 app-server 分支, isFresh=${isFresh}, threadId=${session.codexThreadId?.slice(-8)}`);
+      console.error(`[${ctx.name}] DEBUG entering app-server branch, isFresh=${isFresh}, threadId=${session.codexThreadId?.slice(-8)}`);
       let useExecFallback = false;
       try {
         const r = await runViaAppServer(cwd, effectiveText, chatId, session, onTool, isFresh);
@@ -212,7 +212,7 @@ export class CodexAgentModule {
         execServerUsage = r.usage;
       } catch (appErr: any) {
         const errMsg = appErr.message || '';
-        console.error(`[${ctx.name}] app-server 失败: ${errMsg}`);
+        console.error(`[${ctx.name}] app-server failed: ${errMsg}`);
 
         // thread not found → app-server 进程内线程丢了，尝试重新创建
         if (errMsg.includes('thread not found') || errMsg.includes('Thread not found')) {
@@ -221,7 +221,7 @@ export class CodexAgentModule {
             const r2 = await runViaAppServer(cwd, effectiveText, chatId, session, onTool, true);
             response = r2.response;
             execServerUsage = r2.usage;
-            console.error(`[${ctx.name}] app-server thread 重建成功`);
+            console.error(`[${ctx.name}] app-server thread rebuilt successfully`);
           } catch {
             useExecFallback = true;
           }
@@ -236,7 +236,7 @@ export class CodexAgentModule {
           const r = await spawnCodexExec(cwd, effectiveText, onTool);
           session.codexThreadId = r.threadId;
           response = r.response;
-          console.log(`[${ctx.name}] 全新会话 thread=${r.threadId.slice(-8)}`);
+          console.log(`[${ctx.name}] Fresh session thread=${r.threadId.slice(-8)}`);
         } else {
           const r = await spawnCodexResume(cwd, session.codexThreadId, effectiveText, onTool);
           response = r.response;
@@ -250,16 +250,16 @@ export class CodexAgentModule {
         const cost = calculateCost(ctx.activeModel, usage.inputTokens, usage.outputTokens);
         ctx.accumulateStats(session, { ...usage, costUSD: cost });
         await ctx.sendProgress(chatId,
-          `输入 ${usage.inputTokens.toLocaleString()} Token\n输出 ${usage.outputTokens.toLocaleString()} Token\n费用 $${cost.toFixed(4)}`);
+          `Input ${usage.inputTokens.toLocaleString()} Token\nOutput ${usage.outputTokens.toLocaleString()} Token\nCost $${cost.toFixed(4)}`);
       }
 
       if (response) {
         await ctx.sendFormattedReply(chatId, response);
       }
-      else await ctx.reply(chatId, '✅ 已完成');
+      else await ctx.reply(chatId, '✅ Completed');
       ctx.persistSession(chatId, session);
     } catch (e: any) {
-      console.error(`[${ctx.name}] Codex 错误: ${e.message}`);
+      console.error(`[${ctx.name}] Codex error: ${e.message}`);
       session.codexThreadId = undefined;
       try {
         const r = await spawnCodexExec(cwd, text, onTool);
@@ -268,7 +268,7 @@ export class CodexAgentModule {
           await ctx.sendFormattedReply(chatId, r.response);
         }
       } catch (e2: any) {
-        await ctx.reply(chatId, `❌ 处理失败: ${e2.message}`);
+        await ctx.reply(chatId, `❌ Processing failed: ${e2.message}`);
       }
     }
   }

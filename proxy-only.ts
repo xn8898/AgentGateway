@@ -23,19 +23,19 @@ if (defaultCfg) {
   if (cfg.modelAliases) {
     sharedState.modelAliases = cfg.modelAliases;
   }
-  console.log(`[Proxy] 默认模型: ${defaultModel}`);
+  console.log(`[Proxy] Default model: ${defaultModel}`);
 } else {
-  console.error(`❌ 无效默认模型: ${defaultModel}`);
+  console.error(`❌ Invalid default model: ${defaultModel}`);
   process.exit(1);
 }
 
 // 启动代理
 const PORT = cfg.system?.proxyPort || 18899;
 startAnthropicProxy(PORT).then((port: number) => {
-  console.log(`\n🚀 IMtoAgent Proxy-Only 模式`);
-  console.log(`   代理: http://localhost:${port}/v1/messages`);
-  console.log(`   模型: ${defaultModel}`);
-  console.log(`   模式: 格式转换 (Anthropic ↔ OpenAI)`);
-  console.log(`\n✅ 可以用 Claude Code 了:`);
+  console.log(`\n🚀 IMtoAgent Proxy-Only Mode`);
+  console.log(`   Proxy: http://localhost:${port}/v1/messages`);
+  console.log(`   Model: ${defaultModel}`);
+  console.log(`   Mode: Format Conversion (Anthropic ↔ OpenAI)`);
+  console.log(`\n✅ Ready to use with Claude Code:`);
   console.log(`   ANTHROPIC_BASE_URL=http://localhost:${port} claude`);
 });

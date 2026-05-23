@@ -1,3 +1,3 @@
-# 技能注入
+# Skill Injection
 
-未来功能。
+Planned future functionality.

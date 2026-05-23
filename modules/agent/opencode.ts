@@ -96,7 +96,7 @@ async function ocSendPrompt(
 
   while (turn < MAX_TURNS) {
     if (Date.now() - startTime > MAX_DURATION) {
-      console.error('[OpenCode] 任务总超时 (10min)');
+      console.error('[OpenCode] Task timed out (10min)');
       break;
     }
     turn++;
@@ -133,7 +133,7 @@ async function ocSendPrompt(
     if (!hasToolCall) break;
 
     // 有 tool_call，继续推进（空 prompt）
-    promptText = '继续';
+    promptText = 'Continue';
   }
 
   return { response: accumulatedResponse };
@@ -176,7 +176,7 @@ export class OpenCodeAgentModule {
       // ① Plan 模式处理
       let effectiveText = text;
       if (session.codexMode === 'plan') {
-        effectiveText = `[模式: 先计划后执行] 请先制定一个清晰的计划，等我确认后再执行。用户请求: ${text}`;
+        effectiveText = `[Mode: Plan then execute] Please create a clear plan first, wait for my confirmation before executing. User request: ${text}`;
       }
 
       // ② 清理标记
@@ -187,14 +187,14 @@ export class OpenCodeAgentModule {
       if (shouldClear || !session.ocSessionId) {
         if (session.ocSessionId) {
           await ocDeleteSession(session.ocSessionId);
-          console.log(`[${ctx.name}] 已清除 oc session=${session.ocSessionId.slice(-8)}`);
+          console.log(`[${ctx.name}] Cleared oc session=${session.ocSessionId.slice(-8)}`);
         }
         session.ocSessionId = await ocCreateSession(chatId);
-        console.log(`[${ctx.name}] 新建 oc session=${session.ocSessionId.slice(-8)}`);
+        console.log(`[${ctx.name}] Created oc session=${session.ocSessionId.slice(-8)}`);
       }
 
       // ④ 发送进度提示
-      await ctx.sendProgress(chatId, '💭 思考中...');
+      await ctx.sendProgress(chatId, '💭 Thinking...');
 
       // ④.⑤ 构建系统提示词
       const systemPrompt = buildSystemPrompt({
@@ -218,7 +218,7 @@ export class OpenCodeAgentModule {
       if (response) {
         await ctx.sendFormattedReply(chatId, response);
       } else {
-        await ctx.reply(chatId, '✅ 已完成');
+        await ctx.reply(chatId, '✅ Completed');
       }
 
       // ⑧ 统计
@@ -228,15 +228,15 @@ export class OpenCodeAgentModule {
         const cost = calculateCost(ctx.activeModel, lastUsage.inputTokens, lastUsage.outputTokens);
         ctx.accumulateStats(session, { ...lastUsage, costUSD: cost });
         await ctx.sendProgress(chatId,
-          `输入 ${lastUsage.inputTokens.toLocaleString()} Token\n输出 ${lastUsage.outputTokens.toLocaleString()} Token\n费用 $${cost.toFixed(4)}`);
+          `Input ${lastUsage.inputTokens.toLocaleString()} Token\nOutput ${lastUsage.outputTokens.toLocaleString()} Token\nCost $${cost.toFixed(4)}`);
       }
 
       // ⑨ 持久化会话
       ctx.persistSession(chatId, session);
 
     } catch (err: any) {
-      console.error(`[${ctx.name}] OpenCode 错误: ${err.message}`);
-      await ctx.reply(chatId, `⚠️ OpenCode 出错：${err.message}`);
+      console.error(`[${ctx.name}] OpenCode error: ${err.message}`);
+      await ctx.reply(chatId, `⚠️ OpenCode error: ${err.message}`);
     }
   }
 

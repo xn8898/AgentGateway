@@ -52,14 +52,14 @@ export function getDataDir(): string {
   // cwd（开发模式）
   const cwd = process.cwd();
   if (fs.existsSync(path.join(cwd, 'config.json'))) {
-    candidates.push({ dir: cwd, label: 'cwd 开发模式' });
+    candidates.push({ dir: cwd, label: 'cwd development mode' });
   }
 
   if (candidates.length > 0) {
     // 有现成配置，直接用最优先的那个
     const chosen = candidates[0];
     _dataDir = chosen.dir;
-    console.log(`[Paths] 数据目录: ${_dataDir} (${chosen.label})`);
+    console.log(`[Paths] Data directory: ${_dataDir} (${chosen.label})`);
     return _dataDir;
   }
 
@@ -93,7 +93,7 @@ function initDataDir(dotDir: string, envHome: string): string {
     const pkgDir = getPkgDir();
     if (fs.existsSync(path.join(pkgDir, 'templates', 'config.template.json'))) {
       sourceDir = path.join(pkgDir, 'templates');
-      sourceLabel = '包模板';
+      sourceLabel = 'package template';
     }
   }
 
@@ -107,7 +107,7 @@ function initDataDir(dotDir: string, envHome: string): string {
     copyIfExists(sourceDir, target, 'config.json');
     copyIfExists(sourceDir, target, 'providers.json');
     copyIfExists(sourceDir, target, 'opencode.json');
-  } else if (sourceDir && sourceLabel === '包模板') {
+  } else if (sourceDir && sourceLabel === 'package template') {
     // npm 安装：从模板拷贝（去掉 .template 后缀）
     copyTemplateIfExists(sourceDir, target, 'config.template.json', 'config.json');
     copyTemplateIfExists(sourceDir, target, 'providers.template.json', 'providers.json');
@@ -119,8 +119,8 @@ function initDataDir(dotDir: string, envHome: string): string {
     }
   }
 
-  console.log(`[Paths] ✨ 首次初始化数据目录: ${target} (来源: ${sourceLabel || '默认模板'})`);
-  console.log(`[Paths] 请编辑 ${path.join(target, 'config.json')} 配置你的凭证`);
+  console.log(`[Paths] ✨ First-time data directory initialized: ${target} (source: ${sourceLabel || 'default template'})`);
+  console.log(`[Paths] Please edit ${path.join(target, 'config.json')} to configure your credentials`);
 
   return target;
 }
@@ -206,13 +206,13 @@ export function getRestoreMarkerPath(): string {
 
 export function getTemplatePath(relativePath: string): string {
   const tplPath = path.join(getPkgDir(), 'templates', relativePath);
-  if (!fs.existsSync(tplPath)) console.warn(`⚠️  模板不存在: ${tplPath}`);
+  if (!fs.existsSync(tplPath)) console.warn(`⚠️  Template not found: ${tplPath}`);
   return tplPath;
 }
 
 export function getTemplateSoulPath(filename: string): string {
   const tplPath = path.join(getPkgDir(), 'templates', 'soul.template', filename);
-  if (!fs.existsSync(tplPath)) console.warn(`⚠️  灵魂模板不存在: ${tplPath}`);
+  if (!fs.existsSync(tplPath)) console.warn(`⚠️  Soul template not found: ${tplPath}`);
   return tplPath;
 }
 

@@ -56,7 +56,7 @@ function checkRestartSignal(): { triggered: boolean; reason: string } {
       // 兼容纯文本格式
       signal = { reason: raw, timestamp: Date.now() };
     }
-    return { triggered: true, reason: signal.reason || '未知原因' };
+    return { triggered: true, reason: signal.reason || 'Unknown reason' };
   } catch {
     return { triggered: false, reason: '' };
   }
@@ -92,7 +92,7 @@ export class AgentRuntime {
    */
   registerAdapter(backend: string, adapter: AgentAdapter): void {
     this.adapters.set(backend, adapter);
-    console.log(`[Runtime] 注册适配器: ${backend} → ${adapter.name}`);
+    console.log(`[Runtime] Registered adapter: ${backend} → ${adapter.name}`);
   }
 
   /**
@@ -136,14 +136,14 @@ export class AgentRuntime {
           session.metadata = {};
           session.startFresh = false;
           session.running = false;
-          console.log(`[Runtime] startFresh: 清除 ${ctx.chatId} 旧会话`);
+          console.log(`[Runtime] startFresh: cleared old session for ${ctx.chatId}`);
         }
 
         // 3. 重置统计
         this.config.statsTracker.resetForCall(session);
 
         // 4. 发送进度提示
-        await ctx.sendProgress('💭 思考中...');
+        await ctx.sendProgress('💭 Thinking...');
 
         session.running = true;
 
@@ -203,10 +203,10 @@ export class AgentRuntime {
           const now = Date.now();
           if (now - lastRestartTime < RESTART_COOLDOWN_MS) {
             const remaining = Math.ceil((RESTART_COOLDOWN_MS - (now - lastRestartTime)) / 1000);
-            console.log(`[Runtime] ⏳ Agent 请求重启被忽略（冷却中，${remaining}s 后重试）: ${signal.reason}`);
+            console.log(`[Runtime] ⏳ Agent restart request ignored (cooldown, retry in ${remaining}s): ${signal.reason}`);
           } else {
             lastRestartTime = now;
-            console.log(`[Runtime] 🔄 Agent 请求重启: ${signal.reason}`);
+            console.log(`[Runtime] 🔄 Agent requested restart: ${signal.reason}`);
             return { restart: true, reason: signal.reason };
           }
         }
@@ -214,7 +214,7 @@ export class AgentRuntime {
         return { restart: false };
 
       } catch (error: any) {
-        console.error(`[Runtime] 处理消息失败 (attempt ${attempt}): ${error.message}`);
+        console.error(`[Runtime] Failed to process message (attempt ${attempt}): ${error.message}`);
 
         // 7. 错误处理
         const errorCtx: ErrorContext = {
@@ -226,12 +226,12 @@ export class AgentRuntime {
         const action = await this.config.errorHandler.handle(ctx.chatId, error, errorCtx);
 
         if (action.type === 'retry') {
-          console.log(`[Runtime] 重试 ${adapter.name} 调用`);
+          console.log(`[Runtime] Retrying ${adapter.name} call`);
           continue;
         }
 
         if (action.type === 'fallback') {
-          console.log(`[Runtime] 降级到 ${action.adapter}`);
+          console.log(`[Runtime] Fallback to ${action.adapter}`);
           // Phase 2 实现 fallback 逻辑
           const fallbackAdapter = this.adapters.get(action.adapter);
           if (fallbackAdapter) {
@@ -277,6 +277,6 @@ export class AgentRuntime {
     if (adapter?.healthCheck) {
       return adapter.healthCheck();
     }
-    return true; // 默认认为健康
+    return true; // Assume healthy by default
   }
 }

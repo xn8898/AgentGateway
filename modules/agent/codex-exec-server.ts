@@ -81,7 +81,7 @@ export class CodexAppServerClient {
     if (!this._turnActive) return true;
     this._turnToolCallCount++;
     if (this._turnToolCallCount > _config.maxToolCallsPerTurn) {
-      console.error(`[app-server] ⚠️ tool-call loop 检测! chat=${this.chatId.slice(-8)}: ${this._turnToolCallCount} 次 > 上限 ${_config.maxToolCallsPerTurn}`);
+      console.error(`[app-server] ⚠️ tool-call loop detected! chat=${this.chatId.slice(-8)}: ${this._turnToolCallCount} times > limit ${_config.maxToolCallsPerTurn}`);
       return false;
     }
     return true;
@@ -107,7 +107,7 @@ export class CodexAppServerClient {
       approvalPolicy: 'never',
     });
     const threadId = result?.thread?.id || '';
-    if (!threadId) throw new Error('thread/start 未返回 thread.id');
+    if (!threadId) throw new Error('thread/start did not return thread.id');
     console.log(`[app-server] thread started=${threadId.slice(-8)} chat=${this.chatId.slice(-8)}`);
     return threadId;
   }
@@ -202,7 +202,7 @@ export class CodexAppServerClient {
       const req = JSON.stringify({ jsonrpc: '2.0', id, method, params });
       const timer = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`app-server 请求超时: ${method}`));
+        reject(new Error(`app-server request timeout: ${method}`));
       }, 300000);
       this.pendingRequests.set(id, { resolve, reject });
 
@@ -210,7 +210,7 @@ export class CodexAppServerClient {
       if (!ok) {
         clearTimeout(timer);
         this.pendingRequests.delete(id);
-        reject(new Error(`app-server stdin 写入失败: ${method}`));
+        reject(new Error(`app-server stdin write failed: ${method}`));
       }
     });
   }
@@ -231,7 +231,7 @@ class CodexAppServerManager {
   private _generation = 0;       // 每次进程重启递增，用于判断 thread 是否过期
 
   async ensureRunning(): Promise<void> {
-    if (this._shuttingDown) throw new Error('app-server 正在关闭');
+    if (this._shuttingDown) throw new Error('app-server is shutting down');
     if (this.process && !this.process.killed) return;
     if (this._startPromise) { await this._startPromise; return; }
     this._startPromise = this._spawn();
@@ -286,7 +286,7 @@ class CodexAppServerManager {
       } catch {}
     }
     this.process = null;
-    console.log('[app-server] 已关闭');
+    console.log('[app-server] shut down');
   }
   /** 健康检查：进程存活但 readLoop 已停止 */
   needsRestart(): boolean {
@@ -295,7 +295,7 @@ class CodexAppServerManager {
 
   /** 强制重启 app-server（用于健康检查自动恢复） */
   async forceRestart(): Promise<void> {
-    console.warn('[app-server] 健康检查触发强制重启...');
+    console.warn('[app-server] Health check triggered forced restart...');
     await this.shutdown();
     this._shuttingDown = false;
     this._initialized = false;
@@ -307,7 +307,7 @@ class CodexAppServerManager {
   }
 
   private async _spawn(): Promise<void> {
-    console.log('[app-server] 启动 codex app-server (stdio)...');
+    console.log('[app-server] starting codex app-server (stdio)...');
     this.process = Bun.spawn(
       ['codex', 'app-server',
         '--listen', 'stdio://',
@@ -322,7 +322,7 @@ class CodexAppServerManager {
     });
     this.process.exited
       .then(async (code: number | null) => {
-        console.error(`[app-server] 进程退出 code=${code}`);
+        console.error(`[app-server] process exited code=${code}`);
         this.process = null;
         this.readLoopRunning = false;
         this._initialized = false;
@@ -347,7 +347,7 @@ class CodexAppServerManager {
     // 给 app-server 短暂时间完成内部初始化
     await new Promise(r => setTimeout(r, 500));
     this._startReadLoop();
-    console.log('[app-server] 已就绪 (stdio)');
+    console.log('[app-server] ready (stdio)');
   }
 
   private _startReadLoop(): void {
@@ -425,7 +425,7 @@ class CodexAppServerManager {
                 // 超限，发送 error 事件强制终止本轮
                 client.dispatchEvent({
                   type: 'error',
-                  error: `⚠️ Tool-call loop 检测：本 turn 已达 ${client.turnToolCallCount} 次工具调用（上限 ${_config.maxToolCallsPerTurn}），已强制终止。建议拆分为更小任务。`,
+                  error: `⚠️ Tool-call loop detected: this turn has reached ${client.turnToolCallCount} tool calls (limit ${_config.maxToolCallsPerTurn}), forcefully terminated. Consider breaking into smaller tasks.`,
                 });
               }
             }

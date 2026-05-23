@@ -140,7 +140,7 @@ export class ClaudeAdapter implements AgentAdapter {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     if (ClaudeAdapter.MAX_CALL_TIMEOUT_MS > 0) {
       timeoutId = setTimeout(() => {
-        console.log(`[ClaudeAdapter] ⏰ 超时 (${ClaudeAdapter.MAX_CALL_TIMEOUT_MS / 1000}s)，中止请求`);
+        console.log(`[ClaudeAdapter] ⏰ Timeout (${ClaudeAdapter.MAX_CALL_TIMEOUT_MS / 1000}s), aborting request`);
         abortCtrl.abort();
       }, ClaudeAdapter.MAX_CALL_TIMEOUT_MS);
     }
@@ -210,7 +210,7 @@ export class ClaudeAdapter implements AgentAdapter {
         const result = msgAny;
 
         if (result.subtype === 'error' || result.subtype === 'cancelled') {
-          throw new Error(result.error || result.result || '未知错误');
+          throw new Error(result.error || result.result || 'Unknown error');
         }
 
         const usage = {
@@ -222,7 +222,7 @@ export class ClaudeAdapter implements AgentAdapter {
         };
 
         if (timeoutId) clearTimeout(timeoutId);
-        const responseText = fullResponse || `✅ 已完成 (${toolCalls.length} 步操作)`;
+        const responseText = fullResponse || `✅ Completed (${toolCalls.length} steps)`;
 
         return {
           text: responseText,
@@ -234,7 +234,7 @@ export class ClaudeAdapter implements AgentAdapter {
 
     // 流结束但没有 result 消息
     return {
-      text: fullResponse || '✅ 完成',
+      text: fullResponse || '✅ Done',
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     };
 
@@ -242,9 +242,9 @@ export class ClaudeAdapter implements AgentAdapter {
       if (timeoutId) clearTimeout(timeoutId);
       // 如果是被 abort（超时或手动清理），提供有意义的消息
       if (abortCtrl.signal.aborted) {
-        console.log(`[ClaudeAdapter] 请求已被中止 (${err.message || 'aborted'})`);
+        console.log(`[ClaudeAdapter] Request aborted (${err.message || 'aborted'})`);
         return {
-          text: '⚠️ 请求超时或已被取消，请稍后重试。',
+          text: '⚠️ Request timed out or cancelled, please try again.',
         };
       }
       throw err;

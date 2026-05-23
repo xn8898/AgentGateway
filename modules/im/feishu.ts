@@ -89,9 +89,9 @@ export class FeishuIMModule implements IMModule {
         };
         return this._tenantAccessToken.token;
       }
-      throw new Error(`获取 token 失败: ${res.code} ${res.msg}`);
+      throw new Error(`Failed to get token: ${res.code} ${res.msg}`);
     } catch (e: any) {
-      throw new Error(`获取 token 失败: ${e.message}`);
+      throw new Error(`Failed to get token: ${e.message}`);
     }
   }
 
@@ -108,16 +108,16 @@ export class FeishuIMModule implements IMModule {
         data: { app_id: this.appId, app_secret: this.appSecret },
       });
       if (res.code === 0 && res.app_access_token) {
-        // 飞书 app_token 有效期约 2 小时
+        // Feishu app_token valid for ~2 hours
         this._appAccessToken = {
           token: res.app_access_token,
           expiresAt: now + 2 * 60 * 60 * 1000,
         };
         return this._appAccessToken.token;
       }
-      throw new Error(`获取 app token 失败: ${res.code} ${res.msg}`);
+      throw new Error(`Failed to get app token: ${res.code} ${res.msg}`);
     } catch (e: any) {
-      throw new Error(`获取 app token 失败: ${e.message}`);
+      throw new Error(`Failed to get app token: ${e.message}`);
     }
   }
 
@@ -126,14 +126,14 @@ export class FeishuIMModule implements IMModule {
   // ================================================================
 
   async reply(chatId: string, text: string, maxLen = 140000) {
-    const safe = text.length > maxLen ? text.slice(0, maxLen) + '\n\n...(截断)' : text;
+    const safe = text.length > maxLen ? text.slice(0, maxLen) + '\n\n...(truncated)' : text;
     try {
       await this.client.im.message.create({
         params: { receive_id_type: 'chat_id' },
         data: { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text: safe }) },
       });
     } catch (e: any) {
-      console.error(`[Feishu] 回复失败: ${e.message}`);
+      console.error(`[Feishu] Reply failed: ${e.message}`);
     }
   }
 
@@ -144,7 +144,7 @@ export class FeishuIMModule implements IMModule {
         data: { receive_id: chatId, msg_type: 'text', content: JSON.stringify({ text }) },
       });
     } catch (e: any) {
-      console.error(`[Feishu] 进度推送失败: ${e.message}`);
+      console.error(`[Feishu] Progress notification failed: ${e.message}`);
     }
   }
 
@@ -169,14 +169,14 @@ export class FeishuIMModule implements IMModule {
         }
         if (fileKey) {
           await this.sendFile(chatId, fileKey, fb.filename);
-          console.log(`[Feishu] 文件已发送: ${fb.filename}`);
+          console.log(`[Feishu] File sent: ${fb.filename}`);
         }
       } catch (e: any) {
-        console.error(`[Feishu] 文件发送失败: ${fb.filename} - ${e.message}`);
+        console.error(`[Feishu] File send failed: ${fb.filename} - ${e.message}`);
       }
     }
 
-    // 如果只剩下一个文本块，直接发文本
+    // If only one text block remains, send as plain text
     if (cardBlocks.length === 1 && cardBlocks[0].type === 'text') {
       if (fileBlocks.length === 0) return this.reply(chatId, cardBlocks[0].content);
       // 有文件在前，文本块附后
@@ -216,8 +216,8 @@ ${this.escapeCodeBlock(block.code)}
                 cardElements.push({ tag: 'img', img_key: imageKey, alt: { tag: 'plain_text', content: block.alt || '' } });
               }
             } catch (e: any) {
-              console.error(`[Feishu] 图片上传失败: ${e.message}`);
-              cardElements.push({ tag: 'markdown', content: `⚠️ 图片加载失败` });
+              console.error(`[Feishu] Image upload failed: ${e.message}`);
+              cardElements.push({ tag: 'markdown', content: `⚠️ Image load failed` });
             }
           }
           break;
@@ -268,9 +268,9 @@ ${this.escapeCardMarkdown(block.content || '')}`,
           content: JSON.stringify(card),
         },
       });
-      console.log(`[Feishu] 卡片消息已发送 (${cardBlocks.length} blocks)`);
+      console.log(`[Feishu] Card message sent (${cardBlocks.length} blocks)`);
     } catch (e: any) {
-      console.error(`[Feishu] 卡片发送失败: ${e.message}`);
+      console.error(`[Feishu] Card send failed: ${e.message}`);
       // 降级：拼接为纯文本发送
       const fallback = cardBlocks.map(b => {
         switch (b.type) {
@@ -305,11 +305,11 @@ ${b.content || ''}`;
         },
       });
     } catch (e: any) {
-      console.error(`[Feishu] 图片发送失败: ${e.message}`);
+      console.error(`[Feishu] Image send failed: ${e.message}`);
     }
   }
 
-  // 从 URL 上传图片到飞书，返回 image_key
+  // Upload image from URL to Feishu, returns image_key
   async uploadImageFromUrl(url: string): Promise<string | null> {
     try {
       let buffer: Buffer | null = null;
@@ -335,15 +335,15 @@ ${b.content || ''}`;
       });
       const key = r?.image_key || r?.data?.image_key;
       if (key) return key;
-      console.error(`[Feishu] 图片上传失败: image_key missing`);
+      console.error(`[Feishu] Image upload failed: image_key missing`);
       return null;
     } catch (e: any) {
-      console.error(`[Feishu] 图片上传异常: ${e.message}`);
+      console.error(`[Feishu] Image upload error: ${e.message}`);
       return null;
     }
   }
 
-  // 从本地文件上传到飞书，返回 image_key
+  // Upload image from local file to Feishu, returns image_key
   async uploadImageFromFile(filePath: string): Promise<string | null> {
     try {
       const buffer = fs.readFileSync(filePath);
@@ -353,42 +353,42 @@ ${b.content || ''}`;
       });
       const key = r?.image_key || r?.data?.image_key;
       if (key) return key;
-      console.error(`[Feishu] 图片上传失败: image_key missing`);
+      console.error(`[Feishu] Image upload failed: image_key missing`);
       return null;
     } catch (e: any) {
-      console.error(`[Feishu] 图片上传失败: ${e.message}`);
+      console.error(`[Feishu] Image upload failed: ${e.message}`);
       return null;
     }
   }
 
   // ================================================================
-  // 文件上传
+  // File Upload
   // ================================================================
 
-  // 从 URL 下载并上传到飞书，返回 file_key
+  // Download from URL and upload to Feishu, returns file_key
   async uploadFileFromUrl(url: string, filename: string): Promise<string | null> {
     try {
       const buffer = await this.downloadFile(url);
       if (!buffer) return null;
       return this.uploadFileFromBuffer(buffer, filename || path.basename(new URL(url).pathname) || 'file');
     } catch (e: any) {
-      console.error(`[Feishu] 文件上传异常: ${e.message}`);
+      console.error(`[Feishu] File upload error: ${e.message}`);
       return null;
     }
   }
 
-  // 从本地路径上传文件到飞书，返回 file_key
+  // Upload file from local path to Feishu, returns file_key
   async uploadFileFromPath(filePath: string): Promise<string | null> {
     try {
       const buffer = fs.readFileSync(filePath);
       return this.uploadFileFromBuffer(buffer, path.basename(filePath));
     } catch (e: any) {
-      console.error(`[Feishu] 文件上传失败: ${e.message}`);
+      console.error(`[Feishu] File upload failed: ${e.message}`);
       return null;
     }
   }
 
-  // 从 Buffer 上传文件到飞书，返回 file_key
+  // Upload file from Buffer to Feishu, returns file_key
   private async uploadFileFromBuffer(buffer: Buffer, filename: string): Promise<string | null> {
     try {
       const token = await this.getAppToken();
@@ -406,10 +406,10 @@ ${b.content || ''}`;
       if (data.code === 0 && data.data?.file_key) {
         return data.data.file_key;
       }
-      console.error(`[Feishu] 文件上传失败: ${data.code} ${data.msg}`);
+      console.error(`[Feishu] File upload failed: ${data.code} ${data.msg}`);
       return null;
     } catch (e: any) {
-      console.error(`[Feishu] 文件上传异常: ${e.message}`);
+      console.error(`[Feishu] File upload error: ${e.message}`);
       return null;
     }
   }
@@ -426,18 +426,18 @@ ${b.content || ''}`;
         },
       });
     } catch (e: any) {
-      console.error(`[Feishu] 文件发送失败: ${e.message}`);
+      console.error(`[Feishu] File send failed: ${e.message}`);
     }
   }
 
   // ================================================================
-  // 能力声明
+  // Capabilities
   // ================================================================
 
   getCapabilities(): IMCapabilities {
     return {
       text: true,
-      codeBlock: true,       // 卡片 markdown 支持 ``` 语法
+      codeBlock: true,       // Card markdown supports ``` syntax
       cardMessage: true,
       fileSend: true,
       imageSend: true,
@@ -461,7 +461,7 @@ ${b.content || ''}`;
     this.running = false;
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     try { this.wsClient?.stop?.(); } catch {}
-    console.log(`[Feishu] WS 已停止 (appId=${this.appId.slice(-8)})`);
+    console.log(`[Feishu] WS stopped (appId=${this.appId.slice(-8)})`);
   }
 
   private _connect() {
@@ -495,7 +495,7 @@ ${b.content || ''}`;
               });
               if (resolved) {
                 attachments.push(resolved.attachment);
-                text = '[用户发送了一张图片]';
+                text = '[User sent an image]';
               }
               break;
             }
@@ -510,7 +510,7 @@ ${b.content || ''}`;
               });
               if (resolved) {
                 attachments.push(resolved.attachment);
-                text = `[用户发送了文件: ${content.file_name || 'unknown'}]`;
+                text = `[User sent a file: ${content.file_name || 'unknown'}]`;
               }
               break;
             }
@@ -520,13 +520,13 @@ ${b.content || ''}`;
               const resolved = await this._mediaResolver.resolveOne({
                 messageId: message.message_id,
                 resourceKey: content.file_key,
-                type: 'file',  // 飞书音频也用 file 类型下载
+                type: 'file',  // Feishu audio also uses file type for download
               });
               if (resolved) {
                 // 补充音频时长（resolver 无法从飞书 API 获取 duration）
                 resolved.attachment.durationMs = content.duration;
                 attachments.push(resolved.attachment);
-                text = `[用户发送了语音消息 (${(content.duration || 0) / 1000}秒)]`;
+                text = `[User sent a voice message (${(content.duration || 0) / 1000}s)]`;
               }
               break;
             }
@@ -536,11 +536,11 @@ ${b.content || ''}`;
               break;
 
             case 'media':
-              text = '[用户发送了视频消息]';
+              text = '[User sent a video message]';
               break;
 
             case 'sticker':
-              text = '[用户发送了表情]';
+              text = '[User sent a sticker]';
               break;
 
             case 'system':
@@ -551,11 +551,11 @@ ${b.content || ''}`;
               break;
 
             case 'merge_forward':
-              text = '[用户转发了合并消息]';
+              text = '[User forwarded a merged message]';
               break;
 
             default:
-              console.log(`[Feishu] 未处理的消息类型: ${msgType}`);
+              console.log(`[Feishu] Unhandled message type: ${msgType}`);
               return;
           }
 
@@ -563,23 +563,23 @@ ${b.content || ''}`;
 
           await this.messageHandler!(chatId, text, userId, attachments.length > 0 ? attachments : undefined);
         } catch (e: any) {
-          console.error(`[Feishu] 消息处理异常: ${e.message}`);
-          // 不抛异常，防止 SDK dispatcher 未处理 rejection 导致进程退出
+          console.error(`[Feishu] Message processing error: ${e.message}`);
+          // Don't throw to prevent SDK dispatcher unhandled rejection from crashing the process
         }
       },
     });
 
     // 自定义 Logger — 过滤 SDK 内部 WS 重连噪音
     const quietLogger = {
-      info: (...args: any[]) => { /* 静默 info */ },
-      warn: (...args: any[]) => { /* 静默 warn */ },
+      info: (...args: any[]) => { /* silent info */ },
+      warn: (...args: any[]) => { /* silent warn */ },
       error: (...args: any[]) => {
         const msg = args.join(' ');
         // 过滤已知的 SDK 内部 WS 重连噪音（不影响功能，SDK 自带自动重连）
         if (msg.includes('[ws]') && (msg.includes('ECONNREFUSED') || msg.includes('connect failed') || msg.includes('system busy') || msg.includes('repeat connection'))) return;
         console.error(`[Feishu-SDK] ${msg}`);
       },
-      debug: (...args: any[]) => { /* 静默 debug */ },
+      debug: (...args: any[]) => { /* silent debug */ },
     };
 
     this.wsClient = new Lark.WSClient({
@@ -592,19 +592,19 @@ ${b.content || ''}`;
     this.wsClient.start({ eventDispatcher: dispatcher })
       .then(() => {
         this.reconnectAttempts = 0;
-        console.log(`[Feishu] WS 已连接`);
+        console.log(`[Feishu] WS connected`);
       })
       .catch((e: any) => {
-        console.error(`[Feishu] WS 连接失败: ${e.message}`);
+        console.error(`[Feishu] WS connection failed: ${e.message}`);
         this._scheduleReconnect();
       });
 
     this.wsClient.on?.('close', () => {
-      console.log('[Feishu] WS 断开');
+      console.log('[Feishu] WS disconnected');
       this._scheduleReconnect();
     });
     this.wsClient.on?.('error', (e: any) => {
-      console.error(`[Feishu] WS 错误: ${e.message || e}`);
+      console.error(`[Feishu] WS error: ${e.message || e}`);
     });
   }
 
@@ -614,7 +614,7 @@ ${b.content || ''}`;
 
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
     this.reconnectAttempts++;
-    console.log(`[Feishu] ${delay/1000}s 后重连 (第${this.reconnectAttempts}次)`);
+    console.log(`[Feishu] Reconnecting in ${delay/1000}s (attempt ${this.reconnectAttempts})`);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -662,13 +662,13 @@ ${b.content || ''}`;
     try {
       const resp = await fetch(url, { signal: AbortSignal.timeout(30000) });
       if (!resp.ok) {
-        console.error(`[Feishu] 下载失败: HTTP ${resp.status}, url=${url.slice(0, 80)}`);
+        console.error(`[Feishu] Download failed: HTTP ${resp.status}, url=${url.slice(0, 80)}`);
         return null;
       }
       const buf = await resp.arrayBuffer();
       return Buffer.from(buf);
     } catch (e) {
-      console.error(`[Feishu] 下载异常: ${(e as Error).message}, url=${url.slice(0, 80)}`);
+      console.error(`[Feishu] Download error: ${(e as Error).message}, url=${url.slice(0, 80)}`);
       return null;
     }
   }
@@ -691,8 +691,8 @@ ${b.content || ''}`;
             case 'text':    return elem.text || '';
             case 'a':       return `[${elem.text}](${elem.href})`;
             case 'at':      return `@${elem.user_name || elem.user_id || 'unknown'}`;
-            case 'img':     return `[图片]`;
-            case 'emotion': return `[表情]`;
+            case 'img':     return `[Image]`;
+            case 'emotion': return `[Sticker]`;
             default:        return `[${elem.tag}]`;
           }
         }).join('');

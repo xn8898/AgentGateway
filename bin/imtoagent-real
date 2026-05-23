@@ -1,24 +1,26 @@
 #!/usr/bin/env bun
 // ================================================================
-// imtoagent CLI — 全局命令入口
+// imtoagent CLI — global command entry point
 // ================================================================
-// npm install -g imtoagent 后可用：
-//   imtoagent setup    — 交互式配置向导
-//   imtoagent start    — 后台启动网关
-//   imtoagent stop     — 停止网关
-//   imtoagent status   — 查看运行状态
-//   imtoagent restore  — 热重载恢复
-//   imtoagent daemon   — 前台守护模式（自动重启 + 日志）
+// Available after npm install -g imtoagent:
+//   imtoagent setup    — interactive setup wizard
+//   imtoagent start    — start gateway in background
+//   imtoagent run      — start gateway in foreground
+//   imtoagent stop     — stop gateway
+//   imtoagent status   — check running status
+//   imtoagent restore  — hot reload
+//   imtoagent daemon   — foreground daemon (auto-restart, for launchd/systemd)
 // ================================================================
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn, execSync } from 'child_process';
 import { getDataDir } from '../modules/utils/paths';
 
 const PID_FILE = '/tmp/imtoagent.pid';
 
 // ================================================================
-// 命令分发
+// Command dispatch
 // ================================================================
 const command = process.argv[2];
 
@@ -28,6 +30,9 @@ switch (command) {
     break;
   case 'start':
     await cmdStart();
+    break;
+  case 'run':
+    await cmdRun();
     break;
   case 'stop':
     await cmdStop();
@@ -42,19 +47,17 @@ switch (command) {
     await cmdDaemon();
     break;
   case undefined: {
-    // 无命令 → 没完成 setup 自动进向导，已完成显示帮助
     const dataDir = getDataDir();
     const configPath = path.join(dataDir, 'config.json');
     let needsSetup = !fs.existsSync(configPath);
     if (!needsSetup) {
       try {
         const raw = fs.readFileSync(configPath, 'utf-8');
-        // 如果配置里还有 YOUR_ 占位符，说明还没完成 setup
         needsSetup = /YOUR_[A-Z_]+/.test(raw);
       } catch { needsSetup = true; }
     }
     if (needsSetup) {
-      console.log('👋 欢迎使用 imtoagent，请先完成初始配置\n');
+      console.log('👋 Welcome to imtoagent! Please run setup first.\n');
       await cmdSetup();
     } else {
       printHelp();
@@ -67,7 +70,7 @@ switch (command) {
     printHelp();
     break;
   default:
-    console.error(`❌ 未知命令: ${command}`);
+    console.error(`❌ Unknown command: ${command}`);
     printHelp();
     process.exit(1);
 }
@@ -77,22 +80,23 @@ switch (command) {
 // ================================================================
 function printHelp() {
   console.log(`
-imtoagent — IM ↔ Agent 统一网关
+imtoagent — IM ↔ Agent Unified Gateway
 
-用法:
-  imtoagent setup     交互式配置向导
-  imtoagent start     后台启动网关
-  imtoagent stop      停止网关
-  imtoagent status    查看运行状态
-  imtoagent restore   热重载恢复
-  imtoagent daemon    前台守护模式（自动重启 + 日志，适合 launchd/systemd 托管）
+Usage:
+  imtoagent setup     Interactive setup wizard
+  imtoagent start     Start gateway in background (returns immediately)
+  imtoagent run       Start gateway in foreground (Ctrl+C to stop)
+  imtoagent stop      Stop gateway
+  imtoagent status    Check running status
+  imtoagent restore   Hot reload
+  imtoagent daemon    Foreground daemon with auto-restart (for launchd/systemd)
 
-数据目录: ${getDataDir()}
+Data directory: ${getDataDir()}
 `);
 }
 
 // ================================================================
-// setup — 交互式向导
+// setup — interactive wizard
 // ================================================================
 async function cmdSetup() {
   const { runSetupWizard } = await import('../modules/cli/setup');
@@ -100,32 +104,45 @@ async function cmdSetup() {
 }
 
 // ================================================================
-// start — 后台启动
+// Shared: build gateway launch args
+// ================================================================
+function getGatewayArgs() {
+  const pkgDir = path.resolve(import.meta.dirname, '..');
+  const indexFile = path.join(pkgDir, 'index.ts');
+  return { execPath: process.execPath, args: ['run', indexFile] };
+}
+
+function ensureLogDir(dataDir: string) {
+  const logsDir = path.join(dataDir, 'logs');
+  if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+  return path.join(logsDir, 'imtoagent.log');
+}
+
+// ================================================================
+// start — background mode (spawn detached, log to file, return immediately)
 // ================================================================
 async function cmdStart() {
-  // 检查是否已在运行
+  // Check if already running
   if (fs.existsSync(PID_FILE)) {
     const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
     try {
       process.kill(pid, 0);
-      console.error(`❌ 网关已在运行 (PID=${pid})`);
-      console.error(`   运行 "imtoagent stop" 先停止`);
+      console.error(`❌ Gateway already running (PID=${pid})`);
+      console.error(`   Run "imtoagent stop" to stop first`);
       process.exit(1);
     } catch {
-      // 旧 PID 文件残留，清理
       fs.unlinkSync(PID_FILE);
     }
   }
 
-  // 检查配置是否存在
   const dataDir = getDataDir();
   const configPath = path.join(dataDir, 'config.json');
   if (!fs.existsSync(configPath)) {
-    console.error('❌ 未找到配置文件，请先运行 "imtoagent setup"');
+    console.error('❌ No config file found. Please run "imtoagent setup" first');
     process.exit(1);
   }
 
-  // 检查配置的后端是否已安装
+  // Backend check (non-blocking)
   try {
     const { checkBackend } = await import('../modules/utils/backend-check');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -139,26 +156,90 @@ async function cmdStart() {
       }
     }
     if (missingBackends.length > 0) {
-      console.error(`\n⚠️  以下后端已配置但未安装，网关启动后发消息会报错：`);
-      for (const b of missingBackends) {
-        console.error(`   ❌ ${b}`);
-      }
-      console.error(`\n请先安装缺失的后端，或运行 "imtoagent setup" 修改配置。\n`);
-      // 不强制退出，允许用户先启动网关再慢慢装后端
+      console.error(`\n⚠️  The following backends are configured but not installed, messages will fail after gateway starts:`);
+      for (const b of missingBackends) console.error(`   ❌ ${b}`);
+      console.error(`\nPlease install the missing backends, or run "imtoagent setup" to reconfigure.\n`);
     }
   } catch {
-    // 检查失败不影响启动
+    // Check failure doesn't block startup
   }
 
-  console.log('🚀 启动 imtoagent 网关...');
-  console.log(`   数据目录: ${dataDir}`);
-  console.log(`   配置文件: ${configPath}`);
+  const logFile = ensureLogDir(dataDir);
 
-  // 使用 Bun.spawn 后台启动
-  const pkgDir = path.resolve(import.meta.dirname, '..');
-  const indexFile = path.join(pkgDir, 'index.ts');
+  console.log('🚀 Starting imtoagent gateway (background)...');
+  console.log(`   Data directory: ${dataDir}`);
+  console.log(`   Log file: ${logFile}`);
 
-  const child = Bun.spawn([process.execPath, 'run', indexFile], {
+  const { execPath, args } = getGatewayArgs();
+  const cmdLine = `"${execPath}" run "${path.resolve(import.meta.dirname, '..', 'index.ts')}"`;
+
+  // Use a shell to launch the gateway in background — avoids event-loop blockers
+  const shellCmd = `IMTOAGENT_HOME="${dataDir}" ${cmdLine} >> "${logFile}" 2>&1 &
+PID=$!
+echo $PID`;
+
+  const { execSync } = await import('child_process');
+  const pidStr = execSync(shellCmd, {
+    cwd: dataDir,
+    env: { ...process.env, IMTOAGENT_HOME: dataDir },
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  const gatewayPid = parseInt(pidStr.split('\n').pop()!);
+
+  fs.writeFileSync(PID_FILE, String(gatewayPid));
+  console.log(`✅ Gateway started (PID=${gatewayPid})`);
+
+  // Wait for startup verification
+  await new Promise(r => setTimeout(r, 3000));
+  try {
+    process.kill(gatewayPid, 0);
+    console.log('✅ Gateway is running');
+  } catch {
+    console.error('❌ Gateway failed to start, check logs:');
+    if (fs.existsSync(logFile)) {
+      console.log(fs.readFileSync(logFile, 'utf-8').slice(-2000));
+    }
+    fs.unlinkSync(PID_FILE);
+    process.exit(1);
+  }
+
+  // Explicitly exit — Bun may keep event loop alive due to inherited stdio
+  process.exit(0);
+}
+
+// ================================================================
+// run — foreground mode (real-time logs, Ctrl+C to stop)
+// ================================================================
+async function cmdRun() {
+  const dataDir = getDataDir();
+  const configPath = path.join(dataDir, 'config.json');
+  if (!fs.existsSync(configPath)) {
+    console.error('❌ No config file found. Please run "imtoagent setup" first');
+    process.exit(1);
+  }
+
+  const logFile = ensureLogDir(dataDir);
+
+  // Warn if already running in background
+  if (fs.existsSync(PID_FILE)) {
+    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
+    try {
+      process.kill(pid, 0);
+      console.log(`⚠️  Gateway is already running in background (PID=${pid})`);
+      console.log(`   Run "imtoagent stop" first, or this may conflict.\n`);
+    } catch {
+      fs.unlinkSync(PID_FILE);
+    }
+  }
+
+  const { execPath, args } = getGatewayArgs();
+
+  console.log('🚀 Starting imtoagent gateway (foreground mode)...');
+  console.log('   Press Ctrl+C to stop');
+  console.log('');
+
+  const child = Bun.spawn([execPath, ...args], {
     cwd: dataDir,
     env: { ...process.env, IMTOAGENT_HOME: dataDir },
     stdout: 'pipe',
@@ -166,16 +247,10 @@ async function cmdStart() {
   });
 
   fs.writeFileSync(PID_FILE, String(child.pid));
-  console.log(`✅ 网关已启动 (PID=${child.pid})`);
 
-  // 后台日志重定向到 logs/
-  const logsDir = path.join(dataDir, 'logs');
-  if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
-  const logFile = path.join(logsDir, 'imtoagent.log');
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
-  // 启动日志收集
-  (async () => {
-    const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+  const pumpOut = (async () => {
     for await (const chunk of child.stdout as any) {
       const line = new TextDecoder().decode(chunk);
       process.stdout.write(line);
@@ -183,8 +258,7 @@ async function cmdStart() {
     }
   })().catch(() => {});
 
-  (async () => {
-    const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+  const pumpErr = (async () => {
     for await (const chunk of child.stderr as any) {
       const line = new TextDecoder().decode(chunk);
       process.stderr.write(line);
@@ -192,37 +266,42 @@ async function cmdStart() {
     }
   })().catch(() => {});
 
-  // 等待启动验证（5 秒内检查 PID 是否存活）
-  await new Promise(r => setTimeout(r, 3000));
-  try {
-    process.kill(child.pid, 0);
-    console.log('✅ 网关运行正常');
-  } catch {
-    console.error('❌ 网关启动失败，查看日志:');
-    if (fs.existsSync(logFile)) {
-      console.log(fs.readFileSync(logFile, 'utf-8').slice(-2000));
-    }
-    fs.unlinkSync(PID_FILE);
-    process.exit(1);
+  // Ctrl+C → SIGTERM to child
+  const cleanup = () => {
+    console.log('\n🛑 Stopping gateway...');
+    try { process.kill(child.pid, 'SIGTERM'); } catch {}
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+
+  const exitCode = await child.exited;
+  await Promise.allSettled([pumpOut, pumpErr]);
+  logStream.end();
+
+  try { fs.unlinkSync(PID_FILE); } catch {}
+
+  if (exitCode === 0) {
+    console.log('✅ Gateway exited cleanly');
+  } else {
+    console.log(`⚠️  Gateway exited with code ${exitCode}`);
   }
 }
 
 // ================================================================
-// stop — 停止
+// stop — stop gateway
 // ================================================================
 async function cmdStop() {
   if (!fs.existsSync(PID_FILE)) {
-    console.log('ℹ️  网关未运行');
+    console.log('ℹ️  Gateway is not running');
     return;
   }
 
   const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
   try {
     process.kill(pid, 0);
-    console.log(`⏹  正在停止网关 (PID=${pid})...`);
+    console.log(`⏹  Stopping gateway (PID=${pid})...`);
     process.kill(pid, 'SIGTERM');
 
-    // 等待退出
     for (let i = 0; i < 20; i++) {
       try {
         process.kill(pid, 0);
@@ -232,145 +311,127 @@ async function cmdStop() {
       }
     }
 
-    // 检查是否还在
     try {
       process.kill(pid, 0);
-      console.log('⚠️  进程未响应，强制终止...');
+      console.log('⚠️  Process not responding, force killing...');
       process.kill(pid, 'SIGKILL');
     } catch {
-      console.log('✅ 网关已停止');
+      console.log('✅ Gateway stopped');
     }
   } catch {
-    console.log('ℹ️  网关未运行（PID 文件残留，已清理）');
+    console.log('ℹ️  Gateway not running (stale PID file cleaned up)');
   }
 
   try { fs.unlinkSync(PID_FILE); } catch {}
 }
 
 // ================================================================
-// status — 状态
+// status — status check
 // ================================================================
 async function cmdStatus() {
   const dataDir = getDataDir();
 
-  console.log(`\n📊 imtoagent 状态`);
-  console.log(`   数据目录: ${dataDir}`);
+  console.log(`\n📊 imtoagent Status`);
+  console.log(`   Data directory: ${dataDir}`);
 
-  // 进程状态
   if (fs.existsSync(PID_FILE)) {
     const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
     try {
       process.kill(pid, 0);
-      console.log(`   进程: ✅ 运行中 (PID=${pid})`);
+      console.log(`   Process: ✅ Running (PID=${pid})`);
     } catch {
-      console.log(`   进程: ❌ 已停止 (PID=${pid} 不存在)`);
+      console.log(`   Process: ❌ Stopped (PID=${pid} does not exist)`);
     }
   } else {
-    console.log(`   进程: ⏸  未运行`);
+    console.log(`   Process: ⏸  Not running`);
   }
 
-  // 配置文件
   const configPath = path.join(dataDir, 'config.json');
   if (fs.existsSync(configPath)) {
     try {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       const bots = cfg.bots || [];
-      console.log(`   配置: ✅ 已配置 (${bots.length} 个 Bot)`);
+      console.log(`   Config: ✅ Configured (${bots.length} Bot(s))`);
       for (const bot of bots) {
         console.log(`     - ${bot.name} (${bot.backend})`);
       }
     } catch {
-      console.log(`   配置: ❌ 解析失败`);
+      console.log(`   Config: ❌ Parse error`);
     }
   } else {
-    console.log(`   配置: ❌ 未找到 (运行 "imtoagent setup")`);
+    console.log(`   Config: ❌ Not found (run "imtoagent setup")`);
   }
 
-  // 日志
   const logFile = path.join(dataDir, 'logs', 'imtoagent.log');
   if (fs.existsSync(logFile)) {
     const stats = fs.statSync(logFile);
     const size = stats.size > 1024 * 1024
       ? (stats.size / (1024 * 1024)).toFixed(1) + ' MB'
       : (stats.size / 1024).toFixed(1) + ' KB';
-    console.log(`   日志: ${size} (${logFile})`);
+    console.log(`   Log: ${size} (${logFile})`);
   }
 
   console.log();
 }
 
 // ================================================================
-// restore — 热重载
+// restore — hot reload
 // ================================================================
 async function cmdRestore() {
   if (!fs.existsSync(PID_FILE)) {
-    console.error('❌ 网关未运行，无法热重载');
+    console.error('❌ Gateway is not running, cannot hot reload');
     process.exit(1);
   }
 
   const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
-  console.log(`🔄 发送 SIGHUP 到网关 (PID=${pid})...`);
+  console.log(`🔄 Sending SIGHUP to gateway (PID=${pid})...`);
   try {
     process.kill(pid, 'SIGHUP');
-    console.log('✅ 热重载信号已发送');
+    console.log('✅ Hot reload signal sent');
   } catch (e: any) {
-    console.error(`❌ 发送失败: ${e.message}`);
+    console.error(`❌ Failed to send: ${e.message}`);
     process.exit(1);
   }
 }
 
 // ================================================================
-// daemon — 前台守护模式（自动重启 + 日志 + 优雅退出）
-// ================================================================
-// 设计用途：
-//   - 前台运行，被 launchd / systemd 等进程管理器托管
-//   - 崩溃时自动重启（指数退避，最长 30s）
-//   - 收到 SIGTERM/SIGINT 时优雅关闭，不重启
-//   - 日志写入 ~/.imtoagent/logs/imtoagent.log
+// daemon — foreground daemon with auto-restart (for launchd/systemd)
 // ================================================================
 async function cmdDaemon(): Promise<void> {
   const dataDir = getDataDir();
   const configPath = path.join(dataDir, 'config.json');
 
   if (!fs.existsSync(configPath)) {
-    console.error('❌ 未找到配置文件，请先运行 "imtoagent setup"');
+    console.error('❌ No config file found. Please run "imtoagent setup" first');
     process.exit(1);
   }
 
-  const logsDir = path.join(dataDir, 'logs');
-  if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
-  const logFile = path.join(logsDir, 'imtoagent.log');
+  const logFile = ensureLogDir(dataDir);
+  const { execPath, args } = getGatewayArgs();
 
-  const pkgDir = path.resolve(import.meta.dirname, '..');
-  const indexFile = path.join(pkgDir, 'index.ts');
+  console.log(`🛡  imtoagent Daemon Mode`);
+  console.log(`   Data directory: ${dataDir}`);
+  console.log(`   Log file: ${logFile}`);
+  console.log(`   Press Ctrl+C to stop\n`);
 
-  console.log(`🛡  imtoagent 守护模式`);
-  console.log(`   数据目录: ${dataDir}`);
-  console.log(`   日志文件: ${logFile}`);
-  console.log(`   按 Ctrl+C 停止\n`);
-
-  // 优雅退出标记
   let shuttingDown = false;
-
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log('\n🛑 收到停止信号，正在关闭...');
+    console.log('\n🛑 Received stop signal, shutting down...');
   };
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
   let retryDelay = 0;
-  const MAX_RETRY_DELAY = 30_000; // 30s 上限
+  const MAX_RETRY_DELAY = 30_000;
 
   while (!shuttingDown) {
-    // 首次无延迟，之后指数退避
     if (retryDelay > 0) {
-      console.log(`   等待 ${retryDelay / 1000}s 后重启...`);
+      console.log(`   Waiting ${retryDelay / 1000}s before restart...`);
       await new Promise<void>(resolve => {
         const timer = setTimeout(resolve, retryDelay);
-        // 等待期间如果收到停止信号，立即退出
         const check = setInterval(() => {
           if (shuttingDown) {
             clearTimeout(timer);
@@ -382,56 +443,39 @@ async function cmdDaemon(): Promise<void> {
       if (shuttingDown) break;
     }
 
-    const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+    // Open log fd for child stdout/stderr
+    const logFd = fs.openSync(logFile, 'a');
 
-    const child = Bun.spawn([process.execPath, 'run', indexFile], {
+    const child = spawn(execPath, args, {
       cwd: dataDir,
       env: { ...process.env, IMTOAGENT_HOME: dataDir },
-      stdout: 'pipe',
-      stderr: 'pipe',
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
     });
 
     const childPid = child.pid;
     fs.writeFileSync(PID_FILE, String(childPid));
-    console.log(`[${new Date().toISOString()}] 🚀 启动网关 (PID=${childPid})`);
+    console.log(`[${new Date().toISOString()}] 🚀 Starting gateway (PID=${childPid})`);
 
-    // 日志收集
-    const pumpStdout = (async () => {
-      for await (const chunk of child.stdout as any) {
-        const line = new TextDecoder().decode(chunk);
-        process.stdout.write(line);
-        logStream.write(line);
-      }
-    })().catch(() => {});
+    let childExitCode: number | null = null;
+    await new Promise<void>(resolve => {
+      child.on('exit', (code) => { childExitCode = code; resolve(); });
+      child.on('error', () => resolve());
+    });
 
-    const pumpStderr = (async () => {
-      for await (const chunk of child.stderr as any) {
-        const line = new TextDecoder().decode(chunk);
-        process.stderr.write(line);
-        logStream.write(line);
-      }
-    })().catch(() => {});
-
-    // 等待子进程退出
-    const exitCode = await child.exited;
-    await Promise.allSettled([pumpStdout, pumpStderr]);
-    logStream.end();
-
+    fs.closeSync(logFd);
     try { fs.unlinkSync(PID_FILE); } catch {}
 
     if (shuttingDown) break;
 
-    // 判断是否需要重启
-    if (exitCode === 0) {
-      console.log(`[${new Date().toISOString()}] ⏹  网关正常退出 (code=0)，不重启`);
+    if (childExitCode === 0) {
+      console.log(`[${new Date().toISOString()}] ⏹  Gateway exited cleanly (code=0), not restarting`);
       break;
     }
 
-    // 崩溃 → 指数退避重启
     retryDelay = retryDelay === 0 ? 3_000 : Math.min(retryDelay * 2, MAX_RETRY_DELAY);
-    console.log(`[${new Date().toISOString()}] ⚠️  网关异常退出 (code=${exitCode})，${retryDelay / 1000}s 后重启`);
+    console.log(`[${new Date().toISOString()}] ⚠️  Gateway crashed (code=${childExitCode}), restarting in ${retryDelay / 1000}s`);
   }
 
-  console.log('👋 守护进程已停止');
+  console.log('👋 Daemon stopped');
 }
-

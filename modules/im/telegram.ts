@@ -120,7 +120,7 @@ export class TelegramAdapter implements IMModule {
     this.apiUrl = `https://api.telegram.org/bot${this.token}`;
 
     if (cfg.proxy) {
-      console.log(`[Telegram] 已配置代理: ${cfg.proxy}（局部使用，不影响其他模块）`);
+      console.log(`[Telegram] Proxy configured: ${cfg.proxy} (local only, does not affect other modules)`);
     }
   }
 
@@ -164,7 +164,7 @@ export class TelegramAdapter implements IMModule {
         // 降级：设置环境变量（影响全局，但总比没有好）
         if (!process.env.HTTPS_PROXY && !process.env.https_proxy) {
           process.env.HTTPS_PROXY = this.proxy;
-          console.log(`[Telegram] 已设置 HTTPS_PROXY=${this.proxy}`);
+          console.log(`[Telegram] Set HTTPS_PROXY=${this.proxy}`);
         }
       }
     }
@@ -178,12 +178,12 @@ export class TelegramAdapter implements IMModule {
   getCapabilities(): IMCapabilities {
     return {
       text: true,
-      codeBlock: true,       // MarkdownV2 支持 ``` 代码块
-      cardMessage: false,    // Telegram 无原生卡片，sendBlocks 降级为文本
+      codeBlock: true,       // MarkdownV2 supports ``` code blocks
+      cardMessage: false,    // Telegram has no native cards, sendBlocks falls back to text
       fileSend: true,
       imageSend: true,
       audioSend: true,
-      buttonAction: true,    // 内联键盘
+      buttonAction: true,    // Inline keyboard
       maxTextLength: 4096,
     };
   }
@@ -196,13 +196,13 @@ export class TelegramAdapter implements IMModule {
     this.handler = handler;
     this.running = true;
     this._poll();
-    console.log('[Telegram] 长轮询已启动');
+    console.log('[Telegram] Long polling started');
   }
 
   stop(): void {
     this.running = false;
     if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null; }
-    console.log('[Telegram] 已停止');
+    console.log('[Telegram] Stopped');
   }
 
   // ================================================================
@@ -234,7 +234,7 @@ export class TelegramAdapter implements IMModule {
 
           if (this.handler) {
             this.handler(chatId, text, userId, attachments.length > 0 ? attachments : undefined).catch(e =>
-              console.error('[Telegram] 消息处理异常:', e.message)
+              console.error('[Telegram] Message processing error:', e.message)
             );
           }
         }
@@ -242,7 +242,7 @@ export class TelegramAdapter implements IMModule {
       }
     } catch (e: any) {
       if (!this.warnedPollError) {
-        console.error('[Telegram] 长轮询错误:', e.message);
+        console.error('[Telegram] Long poll error:', e.message);
         this.warnedPollError = true;
       }
     }
@@ -342,7 +342,7 @@ export class TelegramAdapter implements IMModule {
           if (voiceAtt) voiceAtt.durationMs = msg.voice.duration * 1000;
         }
       } catch (e: any) {
-        console.error('[Telegram] 媒体解析失败:', e.message);
+        console.error('[Telegram] Media resolution error:', e.message);
       }
     }
 
@@ -354,11 +354,11 @@ export class TelegramAdapter implements IMModule {
     // 纯媒体消息（无文本无caption），生成占位文本
     if (!text && attachments.length > 0) {
       const types = attachments.map(a => {
-        if (a.type === 'image') return '图片';
-        if (a.type === 'audio') return '语音';
-        return '文件';
+        if (a.type === 'image') return 'image';
+        if (a.type === 'audio') return 'voice';
+        return 'file';
       });
-      text = `[用户发送了${types.join('、')}]`;
+      text = `[User sent ${types.join(', ')}]`;
     }
 
     return { text: text.trim(), attachments };
@@ -371,7 +371,7 @@ export class TelegramAdapter implements IMModule {
   /** 成功后重置所有状态 */
   private _onSuccess(): void {
     if (this.circuitOpen) {
-      console.log('[Telegram] 网络恢复，长轮询恢复正常');
+      console.log('[Telegram] Network recovered, long polling restored');
     }
     this.circuitOpen = false;
     this.consecutiveFailures = 0;
@@ -388,7 +388,7 @@ export class TelegramAdapter implements IMModule {
       this.circuitOpen = true;
       this.backoffMs = this.recoveryInterval;
       if (!this.warnedCircuitOpen) {
-        console.error('[Telegram] ⚠️ 连续失败，进入熔断（每 30s 试探恢复）');
+        console.error('[Telegram] ⚠️ Consecutive failures, circuit breaker activated (probing recovery every 30s)');
         this.warnedCircuitOpen = true;
       }
     } else if (!this.circuitOpen) {
@@ -403,7 +403,7 @@ export class TelegramAdapter implements IMModule {
   // ================================================================
 
   async reply(chatId: string, text: string, maxLen = 4096): Promise<void> {
-    const safe = text.length > maxLen ? text.slice(0, maxLen) + '\n\n…(截断)' : text;
+    const safe = text.length > maxLen ? text.slice(0, maxLen) + '\n\n…(truncated)' : text;
     await this._api('sendMessage', {
       chat_id: chatId,
       text: safe,
@@ -449,7 +449,7 @@ export class TelegramAdapter implements IMModule {
             try {
               await this.sendImageByUrl(chatId, block.url, block.alt);
             } catch (e: any) {
-              lines.push(`⚠️ 图片加载失败`);
+              lines.push(`⚠️ Image load failed`);
             }
           }
           break;
@@ -459,7 +459,7 @@ export class TelegramAdapter implements IMModule {
             try {
               await this.sendFileByUrl(chatId, block.url, block.filename);
             } catch (e: any) {
-              lines.push(`⚠️ 文件发送失败: ${block.filename}`);
+              lines.push(`⚠️ File send failed: ${block.filename}`);
             }
           }
           break;
@@ -469,7 +469,7 @@ export class TelegramAdapter implements IMModule {
           if (block.content) lines.push(block.content);
           if (block.buttons?.length) {
             await this._sendInlineButtons(chatId, lines.join('\n'), block.buttons);
-            return; // 按钮消息已发送，不继续拼接
+            return; // Button message already sent, don't continue concatenating
           }
           break;
 
@@ -490,7 +490,7 @@ export class TelegramAdapter implements IMModule {
             try {
               await this._sendAudio(chatId, block.url, block.filename);
             } catch (e: any) {
-              lines.push(`⚠️ 音频发送失败`);
+              lines.push(`⚠️ Audio send failed`);
             }
           }
           break;
@@ -516,7 +516,7 @@ export class TelegramAdapter implements IMModule {
       photo: imageKey,
       caption: alt || '',
     }).catch(async () => {
-      console.error(`[Telegram] 图片发送失败`);
+      console.error(`[Telegram] Image send failed`);
     });
   }
 
@@ -550,7 +550,7 @@ export class TelegramAdapter implements IMModule {
       document: fileKey,
       caption: fileName,
     }).catch(() => {
-      console.error(`[Telegram] 文件发送失败: ${fileName}`);
+      console.error(`[Telegram] File send failed: ${fileName}`);
     });
   }
 

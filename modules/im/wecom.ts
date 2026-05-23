@@ -86,7 +86,7 @@ async function fetchQRCode(): Promise<{ scode: string; authUrl: string }> {
   const raw = await httpsGet(url);
   const resp = JSON.parse(raw);
   if (!resp?.data?.scode || !resp?.data?.auth_url) {
-    throw new Error(`获取二维码失败: ${raw.slice(0, 200)}`);
+    throw new Error(`Failed to get QR code: ${raw.slice(0, 200)}`);
   }
   return { scode: resp.data.scode, authUrl: resp.data.auth_url };
 }
@@ -110,7 +110,7 @@ async function pollResult(scode: string): Promise<{ botId: string; secret: strin
     if (status === 'success') {
       const bi = resp.data.bot_info;
       if (!bi?.botid || !bi?.secret) {
-        throw new Error('扫码成功但未获取到 Bot 信息');
+        throw new Error('QR scan successful but Bot info not received');
       }
       return { botId: bi.botid, secret: bi.secret };
     }
@@ -118,7 +118,7 @@ async function pollResult(scode: string): Promise<{ botId: string; secret: strin
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
   }
 
-  console.log('\n⏱ 扫码超时（5 分钟），请重试');
+  console.log('\n⏱ QR scan timed out (5 min), please retry');
   process.exit(1);
 }
 
@@ -127,17 +127,17 @@ async function pollResult(scode: string): Promise<{ botId: string; secret: strin
  * 调用后会在终端显示二维码，用户扫码后自动获取 botId 和 secret 并保存到本地
  */
 export async function bindWeComQR(): Promise<{ botId: string; secret: string }> {
-  console.log('\n📱 企业微信扫码绑定');
-  console.log('正在获取二维码...');
+  console.log('\n📱 WeCom QR Code Binding');
+  console.log('Fetching QR code...');
 
   const { scode, authUrl } = await fetchQRCode();
 
-  console.log('请使用企业微信扫描以下二维码：');
+  console.log('Please scan the following QR code with WeCom:');
   await renderQR(authUrl);
-  console.log('等待扫码中...');
+  console.log('Waiting for scan...');
 
   const result = await pollResult(scode);
-  console.log('\n✅ 扫码成功！Bot ID 和 Secret 已保存');
+  console.log('\n✅ QR scan successful! Bot ID and Secret saved');
 
   const creds: StoredCreds = {
     botId: result.botId,
@@ -192,12 +192,12 @@ export class WeComIMModule implements IMModule {
   getCapabilities(): IMCapabilities {
     return {
       text: true,
-      codeBlock: false,        // 企微不支持代码块
-      cardMessage: true,       // 模板卡片消息
+      codeBlock: false,        // WeCom doesn't support code blocks
+      cardMessage: true,       // Template card messages
       fileSend: true,
       imageSend: true,
       audioSend: false,
-      buttonAction: true,      // 模板卡片按钮回调
+      buttonAction: true,      // Template card button callbacks
       maxTextLength: TEXT_MAX,
     };
   }
@@ -206,7 +206,7 @@ export class WeComIMModule implements IMModule {
 
   start(handler: MessageHandler): void {
     if (this.running) {
-      console.warn('[WeCom] 已在运行中');
+      console.warn('[WeCom] Already running');
       return;
     }
     this.handler = handler;
@@ -221,7 +221,7 @@ export class WeComIMModule implements IMModule {
       this.ws = null;
     }
     this.handler = null;
-    console.log('[WeCom] 已断开');
+    console.log('[WeCom] Disconnected');
   }
 
   // ── WebSocket 连接 ──
@@ -236,18 +236,18 @@ export class WeComIMModule implements IMModule {
       if (stored) {
         botId = stored.botId;
         secret = stored.secret;
-        console.log('[WeCom] 已加载本地凭证');
+        console.log('[WeCom] Loaded local credentials');
       }
     }
 
     if (!botId || !secret) {
-      console.log('[WeCom] 未找到凭证，启动扫码绑定...');
+      console.log('[WeCom] No credentials found, starting QR binding...');
       const bound = await bindWeComQR();
       botId = bound.botId;
       secret = bound.secret;
     }
 
-    console.log(`[WeCom] 正在连接 WebSocket (bot: ${botId.slice(0, 6)}...)`);
+    console.log(`[WeCom] Connecting WebSocket (bot: ${botId.slice(0, 6)}...)`);
 
     // 2. 创建 WSClient
     this.ws = new WSClient({
@@ -266,23 +266,23 @@ export class WeComIMModule implements IMModule {
 
     // 3. 事件监听
     this.ws.on('connected', () => {
-      console.log('[WeCom] WebSocket 已连接');
+      console.log('[WeCom] WebSocket connected');
     });
 
     this.ws.on('authenticated', () => {
-      console.log('[WeCom] 认证成功');
+      console.log('[WeCom] Authenticated');
     });
 
     this.ws.on('disconnected', (reason: string) => {
-      console.log(`[WeCom] 断开连接: ${reason}`);
+      console.log(`[WeCom] Disconnected: ${reason}`);
       if (this.running) {
-        console.log('[WeCom] 5 秒后重连...');
+        console.log('[WeCom] Reconnecting in 5s...');
         setTimeout(() => { if (this.running) this._connect(); }, 5000);
       }
     });
 
     this.ws.on('error', (err: any) => {
-      console.error(`[WeCom] 错误: ${err?.message || err}`);
+      console.error(`[WeCom] Error: ${err?.message || err}`);
     });
 
     // 4. 接收消息
@@ -290,12 +290,12 @@ export class WeComIMModule implements IMModule {
       try {
         await this._handleMessage(frame);
       } catch (e: any) {
-        console.error(`[WeCom] 消息处理异常: ${e.message}`);
+        console.error(`[WeCom] Message processing error: ${e.message}`);
       }
     });
   }
 
-  // ── 消息解析 ──
+  // ── Message Parsing ──
 
   private async _handleMessage(frame: any): Promise<void> {
     const body = frame.body || {};
@@ -309,10 +309,10 @@ export class WeComIMModule implements IMModule {
         const items = evt.selected_items?.selected_item ?? [];
         const lines = items.map((it: any) => {
           const ids = it.option_ids?.option_id?.filter(Boolean) ?? [];
-          return `- ${it.question_key || '?'}: ${ids.join(', ') || '(未选择)'}`;
+          return `- ${it.question_key || '?'}: ${ids.join(', ') || '(not selected)'}`;
         });
         const text = [
-          '[模板卡片回调]',
+          '[Template card callback]',
           `card_type: ${evt.card_type || '?'}`,
           `event_key: ${evt.event_key || '?'}`,
           ...lines,
@@ -339,28 +339,28 @@ export class WeComIMModule implements IMModule {
         text = body.content?.text || body.text?.content || body.content || '';
         break;
       case 'image':
-        text = '[图片]';
+        text = '[Image]';
         if (body.image?.mediaid) {
           const localPath = await this._downloadMedia(body.image.mediaid, body.image.aeskey, 'image.png');
           attachments.push({ type: 'image', localPath: localPath || '', sourceKey: body.image.mediaid, mimeType: 'image/png' });
         }
         break;
       case 'voice':
-        text = body.voice?.recognition || body.recognition || '[语音]';
+        text = body.voice?.recognition || body.recognition || '[Voice]';
         if (body.voice?.mediaid) {
           const localPath = await this._downloadMedia(body.voice.mediaid, body.voice.aeskey, 'voice.amr');
           attachments.push({ type: 'file', localPath: localPath || '', filename: 'voice.amr', sourceKey: body.voice.mediaid });
         }
         break;
       case 'video':
-        text = '[视频]';
+        text = '[Video]';
         if (body.video?.mediaid) {
           const localPath = await this._downloadMedia(body.video.mediaid, body.video.aeskey, 'video.mp4');
           attachments.push({ type: 'file', localPath: localPath || '', filename: 'video.mp4', sourceKey: body.video.mediaid });
         }
         break;
       case 'file':
-        text = `[文件: ${body.file?.title || body.title || '未知'}]`;
+        text = `[File: ${body.file?.title || body.title || 'unknown'}]`;
         if (body.file?.mediaid) {
           const localPath = await this._downloadMedia(body.file.mediaid, body.file.aeskey, body.file.title || 'file');
           attachments.push({ type: 'file', localPath: localPath || '', filename: body.file.title || 'file', sourceKey: body.file.mediaid });
@@ -370,11 +370,11 @@ export class WeComIMModule implements IMModule {
         text = body.markdown?.content || '';
         break;
       default:
-        text = `[${msgType}消息]`;
+        text = `[${msgType} message]`;
     }
 
     const preview = text.length > 80 ? text.slice(0, 80) + '...' : text;
-    console.log(`[WeCom] ${chatType === 'group' ? '群' : '私聊'} ${fromUser}@${chatId}: ${preview}`);
+    console.log(`[WeCom] ${chatType === 'group' ? 'Group' : 'DM'} ${fromUser}@${chatId}: ${preview}`);
 
     // 保存 frame 用于被动回复
     this.pendingFrames.set(chatId, frame);
@@ -388,10 +388,10 @@ export class WeComIMModule implements IMModule {
 
   async reply(chatId: string, text: string): Promise<void> {
     if (!this.ws?.isConnected) {
-      console.error('[WeCom] WS 未连接');
+      console.error('[WeCom] WS not connected');
       return;
     }
-    const safe = text.length > TEXT_MAX ? text.slice(0, TEXT_MAX) + '\n…截断' : text;
+    const safe = text.length > TEXT_MAX ? text.slice(0, TEXT_MAX) + '\n…truncated' : text;
     const body = {
       msgtype: 'markdown',
       markdown: { content: safe },
@@ -404,7 +404,7 @@ export class WeComIMModule implements IMModule {
         await this.ws.reply(frame, body);
         return;
       } catch (e: any) {
-        console.warn(`[WeCom] 被动回复失败，fallback 到主动推送: ${e.message}`);
+        console.warn(`[WeCom] Passive reply failed, falling back to push: ${e.message}`);
       }
     }
 
@@ -412,7 +412,7 @@ export class WeComIMModule implements IMModule {
     try {
       await this.ws.sendMessage(chatId, body);
     } catch (e: any) {
-      console.error(`[WeCom] 发送失败: ${e.message}`);
+      console.error(`[WeCom] Send failed: ${e.message}`);
     }
   }
 
@@ -436,12 +436,12 @@ export class WeComIMModule implements IMModule {
     try {
       await this.ws.replyStream(frame, streamId, content, finish);
     } catch (e: any) {
-      console.error(`[WeCom] 流式发送失败: ${e.message}`);
+      console.error(`[WeCom] Stream send failed: ${e.message}`);
     }
   }
 
   /**
-   * 非阻塞流式回复
+   * Non-blocking streaming reply
    * 当上一条消息还未收到 ACK 时跳过中间帧，避免慢连接下排队积压
    * finish=true 的最终帧不受限制，始终发送
    */
@@ -458,7 +458,7 @@ export class WeComIMModule implements IMModule {
         // 静默跳过中间帧（非阻塞保护生效）
       }
     } catch (e: any) {
-      console.error(`[WeCom] 非阻塞流式发送失败: ${e.message}`);
+      console.error(`[WeCom] Non-blocking stream send failed: ${e.message}`);
     }
   }
 
@@ -482,7 +482,7 @@ export class WeComIMModule implements IMModule {
             try {
               const mediaId = await this._uploadMediaFromSource(b.url, 'image', b.title || 'image.png');
               if (mediaId) await this.ws!.sendMediaMessage(chatId, 'image', mediaId);
-            } catch (e: any) { console.error(`[WeCom] 图片上传失败: ${e.message}`); }
+            } catch (e: any) { console.error(`[WeCom] Image upload failed: ${e.message}`); }
           }
           break;
         case 'file':
@@ -490,7 +490,7 @@ export class WeComIMModule implements IMModule {
             try {
               const mediaId = await this._uploadMediaFromSource(b.url, 'file', b.title || 'file');
               if (mediaId) await this.ws!.sendMediaMessage(chatId, 'file', mediaId);
-            } catch (e: any) { console.error(`[WeCom] 文件上传失败: ${e.message}`); }
+            } catch (e: any) { console.error(`[WeCom] File upload failed: ${e.message}`); }
           }
           break;
       }
@@ -499,19 +499,19 @@ export class WeComIMModule implements IMModule {
   }
 
   async sendImage(chatId: string, imageKey: string, _alt?: string): Promise<void> {
-    if (!this.ws?.isConnected) { console.error('[WeCom] WS 未连接'); return; }
+    if (!this.ws?.isConnected) { console.error('[WeCom] WS not connected'); return; }
     try {
       const mediaId = await this._uploadMediaFromSource(imageKey, 'image', this._basename(imageKey));
       if (mediaId) await this.ws.sendMediaMessage(chatId, 'image', mediaId);
-    } catch (e: any) { console.error(`[WeCom] 图片发送失败: ${e.message}`); }
+    } catch (e: any) { console.error(`[WeCom] Image send failed: ${e.message}`); }
   }
 
   async sendFile(chatId: string, fileKey: string, fileName: string): Promise<void> {
-    if (!this.ws?.isConnected) { console.error('[WeCom] WS 未连接'); return; }
+    if (!this.ws?.isConnected) { console.error('[WeCom] WS not connected'); return; }
     try {
       const mediaId = await this._uploadMediaFromSource(fileKey, 'file', fileName);
       if (mediaId) await this.ws.sendMediaMessage(chatId, 'file', mediaId);
-    } catch (e: any) { console.error(`[WeCom] 文件发送失败: ${e.message}`); }
+    } catch (e: any) { console.error(`[WeCom] File send failed: ${e.message}`); }
   }
 
   // ── 媒体上传 ──
@@ -529,17 +529,17 @@ export class WeComIMModule implements IMModule {
       const b64 = source.substring(commaIdx + 1);
       buffer = Buffer.from(b64, 'base64');
     } else {
-      // 本地文件路径
+      // local file path
       if (!fs.existsSync(source)) {
-        throw new Error(`文件不存在: ${source}`);
+        throw new Error(`File not found: ${source}`);
       }
       buffer = fs.readFileSync(source);
     }
 
-    if (buffer.length === 0) throw new Error('文件为空');
+    if (buffer.length === 0) throw new Error('File is empty');
 
     const result = await this.ws!.uploadMedia(buffer, { type: mediaType, filename: fileName });
-    console.log(`[WeCom] 媒体上传成功: ${fileName} → ${result.media_id}`);
+    console.log(`[WeCom] Media uploaded: ${fileName} → ${result.media_id}`);
     return result.media_id;
   }
 
@@ -593,10 +593,10 @@ export class WeComIMModule implements IMModule {
       fs.mkdirSync(tempDir, { recursive: true });
       const filePath = path.join(tempDir, `${Date.now()}_${finalName}`);
       fs.writeFileSync(filePath, buffer);
-      console.log(`[WeCom] 媒体下载成功: ${mediaId} → ${filePath}`);
+      console.log(`[WeCom] Media downloaded: ${mediaId} → ${filePath}`);
       return filePath;
     } catch (e: any) {
-      console.error(`[WeCom] 媒体下载失败 (${mediaId}): ${e.message}`);
+      console.error(`[WeCom] Media download failed (${mediaId}): ${e.message}`);
       return null;
     }
   }

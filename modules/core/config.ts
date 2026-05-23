@@ -68,7 +68,7 @@ export class FileConfigManager implements ConfigManager {
       const raw = fs.readFileSync(configPath, 'utf-8');
       this.rawConfig = JSON.parse(raw);
     } catch (e: any) {
-      console.error(`[Config] 加载 config.json 失败: ${e.message}`);
+      console.error(`[Config] Failed to load config.json: ${e.message}`);
       this.rawConfig = {} as RawConfig;
     }
 
@@ -87,7 +87,7 @@ export class FileConfigManager implements ConfigManager {
         });
       }
     } catch (e: any) {
-      console.error(`[Config] 加载 providers.json 失败: ${e.message}`);
+      console.error(`[Config] Failed to load providers.json: ${e.message}`);
     }
 
     // 加载默认 providers
@@ -130,7 +130,7 @@ export class FileConfigManager implements ConfigManager {
         this.botConfigs.set(botKey, {});
       }
     } catch (e: any) {
-      console.error(`[Config] 加载 bot ${botKey} 配置失败: ${e.message}`);
+      console.error(`[Config] Failed to load bot ${botKey} config: ${e.message}`);
       this.botConfigs.set(botKey, {});
     }
   }
@@ -147,7 +147,7 @@ export class FileConfigManager implements ConfigManager {
       this.botConfigs.set(botKey, config);
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     } catch (e: any) {
-      console.error(`[Config] 保存 bot ${botKey} 配置失败: ${e.message}`);
+      console.error(`[Config] Failed to save bot ${botKey} config: ${e.message}`);
     }
   }
 
@@ -261,7 +261,7 @@ export class FileConfigManager implements ConfigManager {
         const configPath = path.join(getDataDir(), 'config.json');
         fs.writeFileSync(configPath, JSON.stringify(this.rawConfig, null, 2) + '\n');
       } catch (e: any) {
-        console.error(`[Config] 保存全局 activeModel 失败: ${e.message}`);
+        console.error(`[Config] Failed to save global activeModel: ${e.message}`);
       }
     }
   }

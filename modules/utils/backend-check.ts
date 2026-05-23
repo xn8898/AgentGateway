@@ -113,12 +113,12 @@ export async function installBackend(
 ): Promise<boolean> {
   const b = BACKEND_DEFS.find((x) => x.type === type);
   if (!b) {
-    console.error(`❌ 未知后端类型: ${type}`);
+    console.error(`❌ Unknown backend type: ${type}`);
     return false;
   }
 
-  console.log(`\n📦 正在安装 ${b.label}...`);
-  console.log(`   命令: ${b.installHint}\n`);
+  console.log(`\n📦 Installing ${b.label}...`);
+  console.log(`   Command: ${b.installHint}\n`);
 
   try {
     // 获取 npm 全局 bin 目录，用于安装后验证（复用 getNpmGlobalBin 缓存）
@@ -154,8 +154,8 @@ export async function installBackend(
     const exitCode = await child.exited;
 
     if (exitCode !== 0) {
-      console.error(`\n❌ ${b.label} 安装失败 (退出码: ${exitCode})`);
-      console.error(`   可手动运行: ${b.installHint}`);
+      console.error(`\n❌ ${b.label} installation failed (exit code: ${exitCode})`);
+      console.error(`   Run manually: ${b.installHint}`);
       return false;
     }
 
@@ -165,7 +165,7 @@ export async function installBackend(
       try {
         if (fs.existsSync(binPath)) {
           const version = execSync(`"${binPath}" --version`, { encoding: 'utf-8', timeout: 5000 }).trim();
-          console.log(`\n✅ ${b.label} 安装成功! 版本: ${version}`);
+          console.log(`\n✅ ${b.label} installed successfully! Version: ${version}`);
           return true;
         }
       } catch {}
@@ -174,20 +174,20 @@ export async function installBackend(
     // fallback: 通过 PATH 查找
     const info = checkOne(b);
     if (info.installed) {
-      console.log(`\n✅ ${b.label} 安装成功! 版本: ${info.version}`);
+      console.log(`\n✅ ${b.label} installed successfully! Version: ${info.version}`);
       return true;
     } else {
-      console.error(`\n❌ ${b.label} 安装后仍未检测到`);
+      console.error(`\n❌ ${b.label} not detected after installation`);
       if (npmBinDir) {
-        console.error(`   npm 全局 bin 目录: ${npmBinDir}`);
-        console.error(`   建议将该目录添加到 PATH，或手动运行: ${b.installHint}`);
+        console.error(`   npm global bin: ${npmBinDir}`);
+        console.error(`   Consider adding it to PATH, or run manually: ${b.installHint}`);
       } else {
-        console.error(`   请手动运行: ${b.installHint}`);
+        console.error(`   Run manually: ${b.installHint}`);
       }
       return false;
     }
   } catch (e: any) {
-    console.error(`\n❌ 安装 ${b.label} 时出错: ${e.message || e}`);
+    console.error(`\n❌ Error installing ${b.label}: ${e.message || e}`);
     return false;
   }
 }

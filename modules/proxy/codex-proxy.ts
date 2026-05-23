@@ -21,7 +21,7 @@ let _codexConfig: CodexProxyConfig | null = null;
 
 export function initCodexProxyConfig(cfg: CodexProxyConfig) {
   _codexConfig = cfg;
-  console.log(`[Codex Proxy] 配置已加载: model=${cfg.model}, upstream=${cfg.upstream}`);
+  console.log(`[Codex Proxy] Config loaded: model=${cfg.model}, upstream=${cfg.upstream}`);
 }
 
 function getConfig(): CodexProxyConfig {
@@ -44,9 +44,9 @@ function getConfig(): CodexProxyConfig {
         upstream: codex.upstream || 'https://api.deepseek.com/v1/chat/completions',
         apiKey,
       };
-      console.log('[Codex Proxy] 从 config.json 加载配置');
+      console.log('[Codex Proxy] Loaded config from config.json');
     } catch (e: any) {
-      console.error(`[Codex Proxy] 无法加载配置: ${e.message}`);
+      console.error(`[Codex Proxy] Unable to load config: ${e.message}`);
     }
   }
   return _codexConfig!;
@@ -98,7 +98,7 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
     model: MODEL(),
     messages: [],
     stream: true,
-    thinking: { type: 'disabled' },  // Codex 不兼容 thinking 模式，content 全 null 导致流断开
+    thinking: { type: 'disabled' },  // Codex doesn't support thinking mode; content is all null causing stream disconnect
   };
   chat.max_tokens = body.max_output_tokens || 8192;
 
@@ -128,7 +128,7 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
       const nonSystem = input.filter((m: any) => m.role !== 'system' && m.role !== 'developer');
       const kept = nonSystem.slice(-(MAX_INPUT_ITEMS - systemItems.length));
       input = [...systemItems, ...kept];
-      console.log(`[Codex] ⚠️ 截断输入: ${input.length + truncated} → ${input.length} 条 (丢弃最旧 ${truncated} 条)`);
+      console.log(`[Codex] ⚠️ Truncated input: ${input.length + truncated} → ${input.length} items (discarded oldest ${truncated})`);
     }
     const types = input.map((m: any) => m.type || ('msg:' + m.role)).join(',');
     console.log(`[Codex] input types: [${types}]`);
@@ -188,16 +188,16 @@ function responsesToChat(body: any): { model: string; messages: ChatMessage[]; s
         if (b.type === 'function_call') {
           calls.push({ id: b.call_id || '', type: 'function', function: { name: b.name || '', arguments: b.arguments || '{}' } });
         } else if (b.type === 'input_image') {
-          // DeepSeek V4 不支持图片输入，降级为文本提示
+          // DeepSeek V4 doesn't support image input, degrade to text hint
           const mime = b.media_type || b.mime_type || 'image/png';
-          textParts.push(`[图片已接收 (${mime})，当前模型不支持直接查看图片内容]`);
+          textParts.push(`[Image received (${mime}), current model doesn't support viewing image content directly]`);
         } else if (b.type === 'input_file') {
-          // DeepSeek V4 不支持文件输入，提取可用文本或降级提示
+          // DeepSeek V4 doesn't support file input, extract text or degrade to hint
           if (b.text || b.content) {
             textParts.push(b.text || b.content || '');
           } else {
-            const name = b.filename || b.file_name || '未知文件';
-            textParts.push(`[文件已接收: ${name}，当前模型不支持直接读取文件内容]`);
+            const name = b.filename || b.file_name || 'unknown file';
+            textParts.push(`[File received: ${name}, current model doesn't support reading file content directly]`);
           }
         } else {
           const t = b.text || b.input_text || b.output_text || '';
@@ -267,7 +267,7 @@ function cleanOrphanTools(messages: ChatMessage[]): ChatMessage[] {
   const filtered = messages.filter(m => {
     if (m.role !== 'tool') return true;
     if (allToolCallIds.has(m.tool_call_id || '')) return true;
-    console.warn(`[Codex] 🗑️ 丢弃孤儿 tool 消息: call_id=${(m.tool_call_id || '').slice(0,16)}`);
+    console.warn(`[Codex] 🗑️ Discarded orphan tool message: call_id=${(m.tool_call_id || '').slice(0,16)}`);
     return false;
   });
   return filtered.length === messages.length ? messages : filtered;
@@ -313,14 +313,14 @@ function validateToolPairing(messages: ChatMessage[]): ChatMessage[] {
             result.push(...matchingTools);
           }
         } else {
-          // P1 修复：不再丢弃整个 assistant 消息，而是保留原始内容并附加警告
-          // 这样下游上下文不会完全丢失
-          const warning = '[⚠️ IMtoAgent 警告：tool_call 未找到匹配的 tool 响应，保留原始消息防止上下文丢失]';
-          console.warn(`[Codex] ⚠️ 保留原始 assistant 消息（附带警告），而非丢弃`);
+          // P1 fix: don't discard entire assistant message, preserve original content with warning
+          // So downstream context isn't completely lost
+          const warning = '[⚠️ IMtoAgent WARNING: tool_call has no matching tool response, preserving original message to prevent context loss]';
+          console.warn(`[Codex] ⚠️ Keeping original assistant message (with warning), not discarding`);
           const preserved: ChatMessage = {
             role: 'assistant',
             content: warning + '\n' + (msg.content || ''),
-            tool_calls: undefined, // 移除无效的 tool_calls
+            tool_calls: undefined, // Remove invalid tool_calls
           };
           if (msg.reasoning_content) preserved.reasoning_content = msg.reasoning_content;
           result.push(preserved);
@@ -579,7 +579,7 @@ export async function handleCodexRequest(
         caps: ctx?.caps || null,
         botName,
       });
-      console.log(`[Codex] 📝 system prompt built (${systemPrompt.length} chars, bot=${botName})`);
+      console.log(`[Codex] 📝 System prompt built (${systemPrompt.length} chars, bot=${botName})`);
 
       let sysMsg = chatReq.messages.find((m: ChatMessage) => m.role === 'system');
       if (!sysMsg) {
@@ -649,7 +649,7 @@ export async function handleCodexRequest(
 
 // 兼容旧引用（不再启动独立服务器）
 export function startCodexProxy(_port?: number): Promise<number> {
-  console.log('[Codex Proxy] 已合并到 18899 端口');
+  console.log('[Codex Proxy] Merged into port 18899');
   return Promise.resolve(18899);
 }
 export function stopCodexProxy(): Promise<void> {

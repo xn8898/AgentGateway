@@ -71,9 +71,9 @@ export function loadProviders(): { providers: Map<string, ProviderConfig>; defau
         format: p.format || 'anthropic',
       });
     }
-    console.log(`[Proxy] 加载 ${providers.size} 个供应商: ${[...providers.keys()].join(', ')}`);
+    console.log(`[Proxy] Loaded ${providers.size} provider(s): ${[...providers.keys()].join(', ')}`);
   } catch (e: any) {
-    console.error(`[Proxy] 读取 providers.json 失败: ${e.message}`);
+    console.error(`[Proxy] Failed to read providers.json: ${e.message}`);
   }
   return { providers, defaultModel };
 }
@@ -85,9 +85,9 @@ export function saveActiveModel(modelSpec: string): void {
     const cfg = JSON.parse(raw);
     cfg.activeModel = modelSpec;
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n');
-    console.log(`[Proxy] activeModel 已持久化: ${modelSpec}`);
+    console.log(`[Proxy] activeModel persisted: ${modelSpec}`);
   } catch (e: any) {
-    console.error(`[Proxy] 保存 activeModel 失败: ${e.message}`);
+    console.error(`[Proxy] Failed to save activeModel: ${e.message}`);
   }
 }
 
@@ -134,7 +134,7 @@ export function loadSessionConfig(customPath?: string): { activeModel: string; m
       modelAliases: cfg.modelAliases || defaultAliases,
     };
   } catch (e: any) {
-    console.error(`[Proxy] 加载会话配置失败 (${customPath || '_default.json'}): ${e.message}`);
+    console.error(`[Proxy] Failed to load session config (${customPath || '_default.json'}): ${e.message}`);
     return { activeModel: defaultAliases.default, modelAliases: defaultAliases };
   }
 }
@@ -155,7 +155,7 @@ export function saveSessionConfig(userId: string, activeModel: string, modelAlia
     };
     fs.writeFileSync(sessionPath, JSON.stringify(cfg, null, 2) + '\n');
   } catch (e: any) {
-    console.error(`[Proxy] 保存会话配置失败 (${userId}): ${e.message}`);
+    console.error(`[Proxy] Failed to save session config (${userId}): ${e.message}`);
   }
 }
 
@@ -574,7 +574,7 @@ function openAIStreamToAnthropic(openAIStream: NodeJS.ReadableStream, res: http.
       const fp = conversationFingerprint(_reqBody.messages);
       if (fp) {
         reasoningCache.set(fp, cachedReasoningContent);
-        console.log(`[Proxy] 🧠 reasoning_content 已缓存（指纹: ${fp.slice(0, 50)}...）`);
+        console.log(`[Proxy] 🧠 reasoning_content cached (fingerprint: ${fp.slice(0, 50)}...)`);
       }
     }
     sendEvent('message_delta', {
@@ -679,7 +679,7 @@ function openAIStreamToAnthropic(openAIStream: NodeJS.ReadableStream, res: http.
   });
 
   openAIStream.on('error', (err) => {
-    console.error(`[Proxy] OpenAI 流错误: ${err.message}`);
+    console.error(`[Proxy] OpenAI stream error: ${err.message}`);
     if (!res.writableEnded) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: `Stream error: ${err.message}`, type: 'api_error' }));
@@ -698,7 +698,7 @@ export function calculateCost(modelSpec: string, inputTokens: number, outputToke
       return (inputTokens * p.inputPerMillion + outputTokens * p.outputPerMillion) / 1_000_000;
     }
     // 未知供应商 — 输出警告日志
-    console.warn(`[calculateCost] ⚠️ 未知供应商 "${provider}"，使用默认价格 ($0.55/M input, $2.19/M output)`);
+    console.warn(`[calculateCost] ⚠️ Unknown provider "${provider}", using default pricing ($0.55/M input, $2.19/M output)`);
   } catch {}
   return (inputTokens * 0.55 + outputTokens * 2.19) / 1_000_000;
 }
@@ -747,7 +747,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(response));
-    console.log(`[Proxy] → ${cfg.providerName}/${cfg.model} GET /v1/models (模拟返回 ${modelList.length} 个模型)`);
+    console.log(`[Proxy] → ${cfg.providerName}/${cfg.model} GET /v1/models (simulated, returning ${modelList.length} models)`);
     return;
   }
 
@@ -786,7 +786,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
 
     // 根据 Claude Code 传的模型名前缀，识别角色并替换为完整规格
     const resolvedSpec = resolveModelByPrefix(originalModel);
-    console.log(`[Proxy] 模型解析: ${originalModel} → ${resolvedSpec}`);
+    console.log(`[Proxy] Model resolved: ${originalModel} → ${resolvedSpec}`);
 
     // 🌐 Web Search：DeepSeek 使用版本化工具名 web_search_20250305，Claude Code 发的是 web_search
     if (parsedBody.tools) {
@@ -794,7 +794,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
         const tn = (t.name || t.type || '').toLowerCase();
         // 调试：WebSearch 工具的完整定义
         if ((t.name || '').toLowerCase().includes('search')) {
-          console.log(`[Proxy] 🔍 WebSearch 原始定义: ${JSON.stringify(t)}`);
+          console.log(`[Proxy] 🔍 WebSearch original definition: ${JSON.stringify(t)}`);
         }
         if (tn === 'web_search' || tn === 'websearch') {
           t.name = 'web_search_20250305';
@@ -803,7 +803,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       }
     }
     if (parsedBody.tools && parsedBody.tools.length > 0) {
-      console.log(`[Proxy] 🔍 tools 定义: ${parsedBody.tools.map((t: any) => t.name || t.type).join(', ')}`);
+      console.log(`[Proxy] 🔍 tools definition: ${parsedBody.tools.map((t: any) => t.name || t.type).join(', ')}`);
     }
 
     // 解析供应商和模型名
@@ -823,7 +823,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     // 根据目标供应商获取配置
     const targetProvider = providers.get(targetProviderName);
     if (!targetProvider) {
-      console.error(`[Proxy] 未知供应商: ${targetProviderName}`);
+      console.error(`[Proxy] Unknown provider: ${targetProviderName}`);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: `Unknown provider: ${targetProviderName}` }));
       return;
@@ -858,7 +858,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
                   thinking: cached,
                   signature: Buffer.from('cc-gw').toString('base64'),
                 });
-                console.log(`[Proxy] 🧠 注入 thinking 块（缓存命中，长度: ${cached.length}）`);
+                console.log(`[Proxy] 🧠 Injected thinking block (cache hit, length: ${cached.length})`);
               }
             }
           }
@@ -885,7 +885,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
 
     const isStream = parsedBody.stream !== false;
 
-    console.log(`[Proxy] → ${targetProviderName}/${targetModelName} (${targetProvider.format}) ${req.method} ${req.url}${originalModel ? ` (原: ${originalModel})` : ''}`);
+    console.log(`[Proxy] → ${targetProviderName}/${targetModelName} (${targetProvider.format}) ${req.method} ${req.url}${originalModel ? ` (original: ${originalModel})` : ''}`);
 
     const upstreamReq = (targetUpstreamProto === 'https' ? require('https') : http).request(options, (upstreamRes) => {
       // 流式响应
@@ -935,7 +935,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
           const respStr = Buffer.concat(respChunks).toString('utf-8');
 
           if (upstreamRes.statusCode !== 200) {
-            console.error(`[Proxy] 上游错误 ${upstreamRes.statusCode}: ${respStr.slice(0, 500)}`);
+            console.error(`[Proxy] Upstream error ${upstreamRes.statusCode}: ${respStr.slice(0, 500)}`);
             res.writeHead(upstreamRes.statusCode || 500, { 'Content-Type': 'application/json' });
             res.end(respStr);
             return;
@@ -955,7 +955,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
           } else {
             let openAIJson: any;
             try { openAIJson = JSON.parse(respStr); } catch {
-              console.error(`[Proxy] OpenAI JSON 解析失败: ${respStr.slice(0, 200)}`);
+              console.error(`[Proxy] OpenAI JSON parse failed: ${respStr.slice(0, 200)}`);
               res.writeHead(502, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Invalid upstream response', type: 'api_error' }));
               return;
@@ -970,7 +970,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
 
     upstreamReq.on('timeout', () => {
       upstreamReq.destroy();
-      console.error(`[Proxy] 请求超时 (${REQUEST_TIMEOUT}ms)`);
+      console.error(`[Proxy] Request timeout (${REQUEST_TIMEOUT}ms)`);
       if (!res.writableEnded) {
         res.writeHead(504, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Upstream request timeout', type: 'api_error' }));
@@ -978,7 +978,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     });
 
     upstreamReq.on('error', (err) => {
-      console.error(`[Proxy] 上游请求失败: ${err.message}`);
+      console.error(`[Proxy] Upstream request failed: ${err.message}`);
       if (!res.writableEnded) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: `Upstream error: ${err.message}`, type: 'api_error' }));
@@ -1004,9 +1004,20 @@ export function startAnthropicProxy(port = 18899): Promise<number> {
   return new Promise((resolve) => {
     server = http.createServer(handleRequest);
     server.listen(port, () => {
-      console.log(`[Proxy] 本地代理启动 http://localhost:${port}/v1/messages`);
-      console.log(`[Proxy] 当前模型: ${sharedState.activeConfig ? `${sharedState.activeConfig.providerName}/${sharedState.activeConfig.model} (${sharedState.activeConfig.format})` : '未设置'}`);
-      console.log(`[Proxy] 供应商: ${sharedState.activeConfig?.baseUrl || '无'}`);
+      console.log(`[Proxy] Local proxy started at http://localhost:${port}/v1/messages`);
+      console.log(`[Proxy] Current model: ${sharedState.activeConfig ? `${sharedState.activeConfig.providerName}/${sharedState.activeConfig.model} (${sharedState.activeConfig.format})` : 'not set'}`);
+      console.log(`[Proxy] Provider: ${sharedState.activeConfig?.baseUrl || 'none'}`);
+
+      // Check for providers with empty API keys
+      const emptyKeyProviders: string[] = [];
+      providers.forEach((cfg, name) => {
+        if (!cfg.apiKey) emptyKeyProviders.push(name);
+      });
+      if (emptyKeyProviders.length > 0) {
+        console.log(`⚠️  The following providers have empty API Keys and may not work properly: ${emptyKeyProviders.join(', ')}`);
+        console.log('   Suggestion: run "imtoagent setup" to configure required parameters\n');
+      }
+
       resolve(port);
     });
   });
@@ -1016,7 +1027,7 @@ export async function stopAnthropicProxy(): Promise<void> {
   return new Promise((resolve) => {
     if (server) {
       server.close(() => {
-        console.log('[Proxy] 代理服务器已关闭');
+        console.log('[Proxy] Proxy server closed');
         server = null;
         resolve();
       });
@@ -1046,7 +1057,7 @@ export function saveSessionMemory(memoryPath: string, data: SessionMemoryData): 
   try {
     fs.writeFileSync(memoryPath, JSON.stringify(data, null, 2));
   } catch (e: any) {
-    console.error(`[Memory] 保存会话失败: ${e.message}`);
+    console.error(`[Memory] Failed to save session: ${e.message}`);
   }
 }
 
@@ -1055,7 +1066,7 @@ export function loadSessionMemory(memoryPath: string): SessionMemoryData | null 
     if (!fs.existsSync(memoryPath)) return null;
     return JSON.parse(fs.readFileSync(memoryPath, 'utf-8'));
   } catch (e: any) {
-    console.error(`[Memory] 加载会话失败: ${e.message}`);
+    console.error(`[Memory] Failed to load session: ${e.message}`);
     return null;
   }
 }
@@ -1065,7 +1076,7 @@ export function deleteSessionMemory(chatId: string): void {
   try {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   } catch (e: any) {
-    console.error(`[Memory] 删除会话 ${chatId} 失败: ${e.message}`);
+    console.error(`[Memory] Failed to delete session ${chatId}: ${e.message}`);
   }
 }
 
@@ -1077,7 +1088,7 @@ export function listPersistedSessions(): string[] {
       .filter(f => f.endsWith('.memory.json'))
       .map(f => f.replace('.memory.json', ''));
   } catch (e: any) {
-    console.error(`[Memory] 扫描会话目录失败: ${e.message}`);
+    console.error(`[Memory] Failed to scan session directory: ${e.message}`);
     return [];
   }
 }

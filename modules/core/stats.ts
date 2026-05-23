@@ -1,7 +1,7 @@
 // ================================================================
-// StatsTracker — 调用统计追踪
+// StatsTracker — call statistics tracking
 // ================================================================
-// 统一管理 token/cost/duration 统计，替代各 Agent 中的重复逻辑
+// Unified token/cost/duration stats management across agents
 // ================================================================
 
 import type { Session, StatsTracker, CallStats } from './types';
@@ -12,14 +12,14 @@ import type { Session, StatsTracker, CallStats } from './types';
 
 export class DefaultStatsTracker implements StatsTracker {
   /**
-   * 重置单次调用的统计（在调用开始时）
+   * Reset call stats (at call start)
    */
   resetForCall(session: Session): void {
     session.stats.calls += 1;
   }
 
   /**
-   * 累加统计（在调用成功后）
+   * Accumulate stats (after call success)
    */
   accumulate(session: Session, usage: {
     inputTokens: number;
@@ -39,35 +39,35 @@ export class DefaultStatsTracker implements StatsTracker {
   }
 
   /**
-   * 生成统计摘要字符串（用于发送给用户）
+   * Generate stats summary string (sent to user)
    */
   formatSummary(session: Session): string {
     const s = session.stats;
     const parts: string[] = [];
 
-    // 调用次数
-    parts.push(`📊 调用 ${s.calls} 次`);
+    // Call count
+    parts.push(`📊 ${s.calls} calls`);
 
-    // Token 用量
+    // Token usage
     const totalTokens = s.totalInputTokens + s.totalOutputTokens;
     if (totalTokens > 0) {
       parts.push(`Token ${this.formatTokens(totalTokens)}`);
     }
 
-    // 成本
+    // Cost
     if (s.totalCostUSD > 0) {
-      parts.push(`费用 $${s.totalCostUSD.toFixed(4)}`);
+      parts.push(`Cost $${s.totalCostUSD.toFixed(4)}`);
     }
 
-    // 耗时
+    // Duration
     if (s.totalDurationMs > 0) {
-      parts.push(`耗时 ${this.formatDuration(s.totalDurationMs)}`);
+      parts.push(`Duration ${this.formatDuration(s.totalDurationMs)}`);
     }
 
     return parts.join(' | ');
   }
 
-  /** 格式化 Token 数量 */
+  /** Format token count */
   private formatTokens(count: number): string {
     if (count >= 1_000_000) {
       return `${(count / 1_000_000).toFixed(1)}M`;
@@ -78,7 +78,7 @@ export class DefaultStatsTracker implements StatsTracker {
     return `${count}`;
   }
 
-  /** 格式化时长 */
+  /** Format duration */
   private formatDuration(ms: number): string {
     const secs = ms / 1000;
     if (secs >= 3600) {

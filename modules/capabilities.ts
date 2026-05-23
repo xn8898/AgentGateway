@@ -25,65 +25,65 @@ export type UnifiedBlock =
 export function buildCapabilityPrompt(caps: IMCapabilities): string {
   const lines: string[] = [];
 
-  // 总览
-  lines.push('## IM 客户端环境');
-  lines.push('你通过飞书（Lark）即时通讯与用户对话。你的回复会被网关解析为飞书原生消息格式。');
+  // Overview
+  lines.push('## IM Client Environment');
+  lines.push('You communicate with users through Feishu (Lark) instant messaging. Your responses are parsed by the gateway into native Feishu message formats.');
   lines.push('');
 
-  // 文本限制
-  lines.push(`**文本限制**：单条消息最多 ${caps.maxTextLength} 字符，超长会自动截断。`);
+  // Text limit
+  lines.push(`**Text limit**: Maximum ${caps.maxTextLength} characters per message. Longer messages are automatically truncated.`);
 
-  // ========== 只能生成 parseToBlocks 支持的能力 ==========
+  // ========== Only generate capabilities supported by parseToBlocks ==========
 
-  // 代码 — ``` 语法
+  // Code — ``` syntax
   if (caps.codeBlock) {
-    lines.push('**代码输出**：当输出代码时，使用标准 markdown 代码块（\\```语言\\n代码\\n\\```）。');
-    lines.push('⚠️ 注意：飞书对代码块的渲染有限，长代码建议使用折叠面板或分段输出，避免单条消息过长。');
+    lines.push('**Code output**: When outputting code, use standard markdown code blocks (\\```language\\ncode\\n\\```).');
+    lines.push('⚠️ Note: Feishu has limited code block rendering. For long code, consider collapsible panels or splitting output to avoid overly long messages.');
   }
 
-  // 图片 — ![]() 语法
+  // Image — ![]() syntax
   if (caps.imageSend) {
-    lines.push('**图片**：可以使用 markdown 图片语法 `![描述](URL)` 发送图片。支持本地 file:// 路径（如图表截图）和远程 URL。网关会自动渲染，无需额外上传步骤。');
+    lines.push('**Images**: You can send images using markdown syntax `![alt](URL)`. Supports local file:// paths (e.g., chart screenshots) and remote URLs. The gateway handles rendering automatically, no extra upload steps needed.');
   }
 
-  // 表格 + 卡片 — | 语法（需要 cardMessage 容器来渲染）
+  // Tables + Cards — | syntax (requires cardMessage container to render)
   if (caps.cardMessage) {
-    lines.push('**表格**：可以使用标准 markdown 表格语法来展示结构化数据。');
+    lines.push('**Tables**: You can use standard markdown table syntax to display structured data.');
     lines.push('```');
-    lines.push('| 列A | 列B |');
-    lines.push('| --- | --- |');
-    lines.push('| 数据1 | 数据2 |');
+    lines.push('| ColA | ColB |');
+    lines.push('| ---- | ---- |');
+    lines.push('| Data1 | Data2 |');
     lines.push('```');
-    lines.push('**卡片消息**：可以使用富文本卡片（多块内容会自动组合为一张卡片消息）。');
+    lines.push('**Card messages**: Rich-text cards are supported (multiple blocks are automatically combined into a single card message).');
   }
 
-  // 文件发送 — fileSend + 本地路径语法
+  // File sending — fileSend + local path syntax
   if (caps.fileSend) {
-    lines.push('**文件发送**：如果你生成了文件（如图表、CSV、代码文件等），在回复中直接使用以下语法即可发送，网关会自动完成上传和投递，你不需要调用任何额外工具：');
-    lines.push('`📎 [文件名](file:///本地绝对路径)`');
-    lines.push('例如：`📎 [分析结果.csv](file:///tmp/result.csv)`');
+    lines.push('**Sending files**: If you generate files (charts, CSVs, code files, etc.), use the following syntax in your reply and the gateway will handle upload and delivery automatically — no extra tools needed:');
+    lines.push('`📎 [filename](file:///absolute/local/path)`');
+    lines.push('Example: `📎 [analysis.csv](file:///tmp/result.csv)`');
   }
 
 
-  // 语音发送 — audioSend + 本地路径语法
+  // Audio sending — audioSend + local path syntax
   if (caps.audioSend) {
-    lines.push('**语音/音频**：如果你生成了音频文件（如语音合成、录音等），在回复中直接使用以下语法即可发送，网关会自动处理：');
-    lines.push('`🎙️ [文件名](file:///本地绝对路径)`');
-    lines.push('例如：`🎙️ [语音播报.mp3](file:///tmp/tts-output.mp3)`');
+    lines.push('**Audio**: If you generate audio files (TTS, recordings, etc.), use the following syntax and the gateway will handle it:');
+    lines.push('`🎙️ [filename](file:///absolute/local/path)`');
+    lines.push('Example: `🎙️ [announcement.mp3](file:///tmp/tts-output.mp3)`');
   }
 
   // 注：buttonAction 有 IM 能力但无 markdown 语法，不生成提示词
 
   lines.push('');
-  lines.push('### 行为规则');
-    lines.push('- 不要在回复中提及或尝试调用 lark-cli、feishu 等第三方上传工具——网关会自动解析 📎 和 ![图片]() 语法并完成发送');
-  lines.push('- **每次修改/创建/删除文件后，必须简要汇报结果**（如"已修改 xxx.ts，修复了 YYY 问题"），不要默默完成就结束');
-  lines.push('- 任务完成后用一两句话总结做了什么');
+  lines.push('### Behavior Rules');
+    lines.push('- Do not mention or attempt to invoke third-party upload tools like lark-cli, feishu, etc. — the gateway automatically parses 📎 and ![image]() syntax and handles sending');
+  lines.push('- **After each file modification/creation/deletion, briefly report the result** (e.g., "Modified xxx.ts, fixed the YYY issue"), don\'t silently finish');
+  lines.push('- Summarize what you did in one or two sentences after completing a task');
   lines.push('');
-  lines.push('### 格式转换规则');
-  lines.push('- 你的回复会被按 markdown 格式解析为多个块（文本、代码、图片、卡片等）');
-  lines.push('- 每个块会被渲染为对应的飞书原生元素');
-  lines.push('- 不要提及这些技术细节，直接使用对应格式即可');
+  lines.push('### Format Conversion Rules');
+  lines.push('- Your reply is parsed as markdown into multiple blocks (text, code, images, cards, etc.)');
+  lines.push('- Each block is rendered as the corresponding native Feishu element');
+  lines.push('- Do not mention these technical details, just use the appropriate format directly');
 
   return lines.join('\n');
 }
