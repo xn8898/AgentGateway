@@ -6,17 +6,15 @@ One gateway, multiple IMs, multiple agents, unified port proxy.
 
 ## 🚀 Quick Start (5 Minutes)
 
-### Step 1: Install
+### Step 1: Install (One Command)
 
 ```bash
-# Requires Bun runtime (macOS/Linux)
-brew install oven-sh/bun/bun
-
-# Install globally
-npm install -g imtoagent
+curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/scripts/install.sh | bash
 ```
 
-### Step 2: Setup
+This script detects your environment, installs bun if needed, installs imtoagent, and guides you through setup.
+
+### Step 2: Start
 
 ```bash
 imtoagent setup
@@ -29,14 +27,17 @@ The interactive wizard guides you through:
 4. Configure model providers (API keys)
 5. Generate soul files for personality injection
 
-### Step 3: Start
+### Step 2: Verify
 
 ```bash
-imtoagent start
-imtoagent status    # verify it's running
+imtoagent status    # check it's running
 ```
 
 That's it! Send `/help` to your Bot in the IM to see available commands.
+
+---
+
+**Alternative install methods:** See [Installation Methods](#installation-methods) below for npm global install or source install.
 
 ---
 
@@ -82,7 +83,25 @@ IM Platform (Feishu/Telegram/WeChat/WeCom)
 
 ## Installation Methods
 
-### Method 1: npm Global Install (Recommended)
+### Method 1: One-Click Install (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/scripts/install.sh | bash
+```
+
+This script does everything automatically:
+- Detects your OS and environment
+- Installs bun if missing
+- Installs or upgrades imtoagent
+- Runs the setup wizard if no configuration exists
+- Starts the gateway and verifies it's running
+
+**Flags:**
+- `--non-interactive` — Skip all prompts, auto-install and auto-start
+- `--skip-bun` — Skip bun installation check
+- `--skip-start` — Don't start the gateway after install
+
+### Method 2: npm Global Install
 
 ```bash
 npm install -g imtoagent
@@ -90,7 +109,7 @@ npm install -g imtoagent
 
 This is the simplest approach. After installation, the post-install script checks if you need initial configuration.
 
-### Method 2: Source Install
+### Method 3: Source Install
 
 ```bash
 git clone https://github.com/imtoagent/imtoagent.git
