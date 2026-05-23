@@ -13,7 +13,6 @@
     "templates/",
     "scripts/",
     "README.md",
-    "install.sh",
     "bin/imtoagent.ts",
     "bin/imtoagent.cjs",
     "bin/imtoagent-real"
