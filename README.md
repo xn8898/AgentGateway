@@ -93,7 +93,7 @@ This is the simplest approach. After installation, the post-install script check
 ### Method 2: Source Install
 
 ```bash
-git clone https://github.com/k3yiac/imtoagent.git
+git clone https://github.com/imtoagent/imtoagent.git
 cd imtoagent
 bun install
 bun run bin/imtoagent setup
@@ -343,7 +343,7 @@ All runtime data is stored in `~/.imtoagent/`:
 
 ```bash
 # Clone and setup development environment
-git clone https://github.com/k3yiac/imtoagent.git
+git clone https://github.com/imtoagent/imtoagent.git
 cd imtoagent
 bun install
 
