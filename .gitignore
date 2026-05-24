@@ -24,3 +24,23 @@ media/
 # 临时文件
 /tmp/
 *.pid
+
+# AI agent private logs
+.workbuddy/
+
+# User private media
+media/inbound/
+
+# Personal bot configs (templates/ handles distribution)
+soul/
+
+# Internal dev docs
+.codex-docs/
+
+# Development tools
+dev.sh
+proxy-only.ts
+data/
+
+# Source scripts (keep compiled .cjs)
+scripts/postinstall.ts
