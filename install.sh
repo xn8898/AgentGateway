@@ -138,7 +138,7 @@ else
 fi
 
 # ============================================================
-# 3. Node.js Check (npm requires node)
+# 3. Node.js Check & Installation
 # ============================================================
 step "3. Checking node/npm"
 
@@ -146,26 +146,49 @@ if command -v node &>/dev/null; then
   NODE_VER=$(node --version)
   done_ok "node: ${NODE_VER}"
 else
-  warn "node not found — npm install will fail"
+  warn "node not found — installing..."
   echo ""
-  echo "  You need Node.js installed. Options:"
-  echo "   macOS: brew install node"
-  echo "   Linux: apt install nodejs npm  (or use nvm)"
-  echo ""
-  echo "  Or install via nvm:"
-  echo "   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
-  echo "   source ~/.bashrc  # or ~/.zshrc"
-  echo "   nvm install 20"
-  echo ""
-  if [ "$NON_INTERACTIVE" = true ]; then
-    error "Cannot continue in non-interactive mode without node."
+
+  if [ "$OS" = "macos" ]; then
+    if command -v brew &>/dev/null; then
+      echo "  Installing Node.js via Homebrew..."
+      brew install node 2>&1 | tail -5
+    else
+      warn "Homebrew not found — installing Node.js via nvm..."
+      echo "  Installing nvm..."
+      export NVM_DIR="$HOME/.nvm"
+      curl -fsSL https://gitee.com/RubyMetric/nvm-cn/raw/main/install.sh | bash 2>&1 | tail -3
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      echo "  Installing Node.js LTS..."
+      nvm install --lts 2>&1 | tail -5
+    fi
+  elif [ "$OS" = "linux" ]; then
+    if command -v apt-get &>/dev/null; then
+      echo "  Installing Node.js via apt..."
+      apt-get update -qq && apt-get install -y -qq nodejs npm 2>&1 | tail -5
+    elif command -v dnf &>/dev/null; then
+      echo "  Installing Node.js via dnf..."
+      dnf install -y nodejs npm 2>&1 | tail -5
+    elif command -v yum &>/dev/null; then
+      echo "  Installing Node.js via yum..."
+      yum install -y nodejs npm 2>&1 | tail -5
+    else
+      echo "  Installing Node.js via nvm..."
+      export NVM_DIR="$HOME/.nvm"
+      curl -fsSL https://gitee.com/RubyMetric/nvm-cn/raw/main/install.sh | bash 2>&1 | tail -3
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      nvm install --lts 2>&1 | tail -5
+    fi
+  fi
+
+  # Verify
+  if command -v node &>/dev/null; then
+    NODE_VER=$(node --version)
+    done_ok "node: ${NODE_VER}"
+  else
+    error "Node.js installation failed. Please install manually."
     exit 1
   fi
-  read -rp "  Continue anyway? [y/N] " CONTINUE
-  case "$CONTINUE" in
-    [yY]*) info "Continuing..." ;;
-    *)     error "Aborted."; exit 1 ;;
-  esac
 fi
 
 if command -v npm &>/dev/null; then
