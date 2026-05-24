@@ -5,7 +5,7 @@ Get imtoagent running in 5 minutes.
 ## Step 1: Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/install.sh | bash
+curl -fsSL https://imtoagent.pages.dev/install.sh | bash
 ```
 
 Or via npm:

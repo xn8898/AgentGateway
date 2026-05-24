@@ -14,7 +14,7 @@ imtoagent bridges **IM platforms** (Feishu, Telegram, WeChat, WeCom) with **AI c
 
 ```bash
 # One-line install (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/install.sh | bash
+curl -fsSL https://imtoagent.pages.dev/install.sh | bash
 
 # Or via npm
 npm install -g imtoagent

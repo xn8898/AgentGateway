@@ -20,7 +20,7 @@ You can install backends before or after imtoagent.
 ## Method 1: One-Click Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/install.sh | bash
+curl -fsSL https://imtoagent.pages.dev/install.sh | bash
 ```
 
 The script:
