@@ -152,32 +152,32 @@ else
   if [ "$OS" = "macos" ]; then
     if command -v brew &>/dev/null; then
       echo "  Installing Node.js via Homebrew..."
-      brew install node 2>&1 | tail -5
+      brew install node >/dev/null 2>&1 || true
     else
       warn "Homebrew not found — installing Node.js via nvm..."
       echo "  Installing nvm..."
       export NVM_DIR="$HOME/.nvm"
-      curl -fsSL https://gitee.com/RubyMetric/nvm-cn/raw/main/install.sh | bash 2>&1 | tail -3
+      curl -fsSL https://gitee.com/RubyMetric/nvm-cn/raw/main/install.sh | bash >/dev/null 2>&1 || true
       [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
       echo "  Installing Node.js LTS..."
-      nvm install --lts 2>&1 | tail -5
+      nvm install --lts >/dev/null 2>&1 || true
     fi
   elif [ "$OS" = "linux" ]; then
     if command -v apt-get &>/dev/null; then
       echo "  Installing Node.js via apt..."
-      apt-get update -qq && apt-get install -y -qq nodejs npm 2>&1 | tail -5
+      apt-get update -qq && apt-get install -y -qq nodejs npm >/dev/null 2>&1 || true
     elif command -v dnf &>/dev/null; then
       echo "  Installing Node.js via dnf..."
-      dnf install -y nodejs npm 2>&1 | tail -5
+      dnf install -y nodejs npm >/dev/null 2>&1 || true
     elif command -v yum &>/dev/null; then
       echo "  Installing Node.js via yum..."
-      yum install -y nodejs npm 2>&1 | tail -5
+      yum install -y nodejs npm >/dev/null 2>&1 || true
     else
       echo "  Installing Node.js via nvm..."
       export NVM_DIR="$HOME/.nvm"
-      curl -fsSL https://gitee.com/RubyMetric/nvm-cn/raw/main/install.sh | bash 2>&1 | tail -3
+      curl -fsSL https://gitee.com/RubyMetric/nvm-cn/raw/main/install.sh | bash >/dev/null 2>&1 || true
       [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-      nvm install --lts 2>&1 | tail -5
+      nvm install --lts >/dev/null 2>&1 || true
     fi
   fi
 
