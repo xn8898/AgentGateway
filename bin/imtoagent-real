@@ -64,6 +64,12 @@ switch (command) {
     }
     break;
   }
+  case 'version':
+  case '--version':
+  case '-v':
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+    console.log(pkg.version);
+    break;
   case 'help':
   case '--help':
   case '-h':

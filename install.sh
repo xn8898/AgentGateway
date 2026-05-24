@@ -257,6 +257,11 @@ if [ "$NEED_SETUP" = true ]; then
     info "Non-interactive mode — skipping setup wizard"
     echo ""
     echo "  Run 'imtoagent setup' manually to configure."
+  elif [ ! -t 0 ]; then
+    warn "No TTY detected — cannot run interactive setup wizard"
+    echo ""
+    echo "  Setup requires a real terminal. After this script finishes, run:"
+    echo "    imtoagent setup"
   else
     echo ""
     echo "  Starting interactive setup wizard..."
