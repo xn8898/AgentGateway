@@ -525,18 +525,9 @@ async function streamResponse(upstreamRes: Response, resWriter: WritableStreamDe
 }
 
 // ================================================================
-// ================================================================
-// usage 累加器 — 供网关读取 Codex 的 Token/成本统计
+// usage 累加器 — 内部统计，供 accumulateProxyUsage 记录
 // ================================================================
 let _proxyUsage = { inputTokens: 0, outputTokens: 0 };
-
-export function getProxyUsage() {
-  return { ..._proxyUsage };
-}
-
-export function resetProxyUsage() {
-  _proxyUsage = { inputTokens: 0, outputTokens: 0 };
-}
 
 export function accumulateProxyUsage(inputTokens: number, outputTokens: number) {
   _proxyUsage.inputTokens += inputTokens;
@@ -645,13 +636,4 @@ export async function handleCodexRequest(
     console.error(`[Codex] 💥 unhandled: ${e.message}`);
     res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'internal error' })); return;
   }
-}
-
-// 兼容旧引用（不再启动独立服务器）
-export function startCodexProxy(_port?: number): Promise<number> {
-  console.log('[Codex Proxy] Merged into port 18899');
-  return Promise.resolve(18899);
-}
-export function stopCodexProxy(): Promise<void> {
-  return Promise.resolve();
 }

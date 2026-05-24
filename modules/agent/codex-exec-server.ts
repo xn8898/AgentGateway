@@ -22,9 +22,6 @@ let _config: ExecServerConfig = {
   maxToolCallsPerTurn: 80,
 };
 
-export function setExecServerConfig(cfg: Partial<ExecServerConfig>) {
-  _config = { ..._config, ...cfg };
-}
 
 // ================================================================
 // 事件类型
@@ -510,4 +507,3 @@ export async function shutdownAppServer(): Promise<void> {
 export const shutdownExecServer = shutdownAppServer;
 
 // 向后兼容的类型别名
-export type CodexExecServerClient = CodexAppServerClient;

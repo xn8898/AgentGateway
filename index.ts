@@ -72,8 +72,7 @@ registerIM('wechat', {
   },
 });
 import { startAnthropicProxy, stopAnthropicProxy } from './modules/proxy/anthropic-proxy';
-import { getProxyUsage, resetProxyUsage, initCodexProxyConfig } from './modules/proxy/codex-proxy';
-import { initOpenCodeConfig } from './modules/agent/opencode';
+import { initCodexProxyConfig } from './modules/proxy/codex-proxy';
 import { checkRateLimit, setRateLimitConfig } from './modules/rate-limiter';
 import { setCurrentBot } from './modules/bot-context';
 import { getDataDir, getSessionsDir, getSoulDir, getBotKey, getRestoreMarkerPath } from './modules/utils/paths';
@@ -903,11 +902,6 @@ async function main() {
         reportedModel: codexCfg.reportedModel || 'gpt-5.5',
         upstream: codexCfg.upstream || 'https://api.deepseek.com/v1/chat/completions',
         apiKey,
-      });
-      const ocCfg = config.opencode || {};
-      initOpenCodeConfig({
-        serverUrl: ocCfg.serverUrl || 'http://localhost:4096',
-        defaultModel: ocCfg.defaultModel || { providerID: 'anthropic', modelID: 'claude-sonnet-4-5' },
       });
       const rlCfg = config.rateLimit || {};
       if (rlCfg.enabled !== false) {
