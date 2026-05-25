@@ -281,19 +281,34 @@ export async function startOpenCodeServer(): Promise<void> {
 
   console.log(`[OpenCodeAdapter] Using opencode binary: ${ocBinPath}`);
 
-  const child = Bun.spawn(
-    [ocBinPath, 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
-    {
-      cwd: getDataDir(),
-      env: {
-        ...process.env,
-        // 环形通信无需真实 key，但 OpenCode 的 Anthropic provider 要求此变量存在
-        ANTHROPIC_API_KEY: 'imtoagent-local',
+  const dataDir = getDataDir();
+  if (!fs.existsSync(dataDir)) {
+    console.log(`[OpenCodeAdapter] Creating data directory: ${dataDir}`);
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  console.log(`[OpenCodeAdapter] Working directory: ${dataDir}`);
+
+  let child;
+  try {
+    child = Bun.spawn(
+      [ocBinPath, 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
+      {
+        cwd: dataDir,
+        env: {
+          ...process.env,
+          // 环形通信无需真实 key，但 OpenCode 的 Anthropic provider 要求此变量存在
+          ANTHROPIC_API_KEY: 'imtoagent-local',
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
       },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
-  );
+    );
+  } catch (err: any) {
+    console.error(`[OpenCodeAdapter] Failed to start opencode serve: ${err.message}`);
+    console.error(`  Binary: ${ocBinPath}`);
+    console.error(`  Work dir: ${dataDir} (exists: ${fs.existsSync(dataDir)})`);
+    throw new Error(`opencode serve failed: ${err.message}`);
+  }
 
   // 后台收集日志
   (async () => {

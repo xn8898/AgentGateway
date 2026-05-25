@@ -39,8 +39,8 @@ export function getDataDir(): string {
   // ====== 第 1 步：查找已有的配置文件 ======
   const candidates: { dir: string; label: string }[] = [];
 
-  // IMTOAGENT_HOME（优先检查，但不强制）
-  if (envHome && fs.existsSync(path.join(envHome, 'config.json'))) {
+  // IMTOAGENT_HOME（优先检查，但不强制；目录不存在则忽略）
+  if (envHome && fs.existsSync(envHome) && fs.existsSync(path.join(envHome, 'config.json'))) {
     candidates.push({ dir: envHome, label: 'IMTOAGENT_HOME' });
   }
 
@@ -83,7 +83,7 @@ function initDataDir(dotDir: string, envHome: string): string {
   let sourceDir: string | null = null;
   let sourceLabel = '';
 
-  if (envHome && fs.existsSync(path.join(envHome, 'config.json'))) {
+  if (envHome && fs.existsSync(envHome) && fs.existsSync(path.join(envHome, 'config.json'))) {
     sourceDir = envHome;
     sourceLabel = 'IMTOAGENT_HOME';
   } else if (fs.existsSync(path.join(process.cwd(), 'config.json'))) {

@@ -3,6 +3,7 @@
 // ============================================================
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 // ===== 重启信号文件路径（统一固定，不依赖 getDataDir） =====
@@ -315,7 +316,7 @@ class Bot {
     this.backend = cfg.backend;
     this.appId = cfg.appId;
     this.appSecret = cfg.appSecret;
-    this.defaultCwd = cfg.cwd || globalConfig.system?.defaultProjectDir || '/Users/keyi/Projects';
+    this.defaultCwd = cfg.cwd || globalConfig.system?.defaultProjectDir || path.join(os.homedir(), 'Projects');
     this.config = globalConfig;
 
     // Bot 级模型配置
@@ -874,7 +875,7 @@ async function main() {
     process.exit(0);
   }
 
-  const DEFAULT_PROJECT_DIR = config.system?.defaultProjectDir || '/Users/keyi/Projects';
+  const DEFAULT_PROJECT_DIR = config.system?.defaultProjectDir || path.join(os.homedir(), 'Projects');
 
   if (config.modelAliases) sharedState.modelAliases = config.modelAliases;
   const { providers: _providers, defaultModel: DEFAULT_MODEL_SPEC } = loadProviders();
