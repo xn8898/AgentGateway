@@ -1,6 +1,6 @@
 # imtoagent
 
-> **IM ↔ Agent Unified Gateway** — Connect IM platforms to AI coding agents via a single proxy port.
+> **IM ↔ Agent Unified Gateway** — Connect IM platforms to AI coding agents
 
 [![npm version](https://img.shields.io/npm/v/imtoagent.svg)](https://www.npmjs.com/package/imtoagent)
 [![npm downloads](https://img.shields.io/npm/dt/imtoagent.svg)](https://www.npmjs.com/package/imtoagent)
@@ -25,7 +25,7 @@ imtoagent start
 ## Architecture
 
 ```
-IM Platform (Feishu/Telegram/WeChat/WeCom)
+IM Platform (Feishu / Telegram / WeChat / WeCom)
          │
          ▼
    ┌─────────────┐
@@ -41,10 +41,10 @@ AI Agent (Claude Code / Codex / OpenCode)
 
 | IM Platform | Agent Backend |
 |-------------|---------------|
-| Feishu (飞书) | Claude Code |
+| Feishu | Claude Code |
 | Telegram | Codex |
-| Enterprise WeChat (企业微信) | OpenCode |
-| Personal WeChat (个人微信) | |
+| Enterprise WeChat | OpenCode |
+| Personal WeChat | |
 
 ## Key Features
 
