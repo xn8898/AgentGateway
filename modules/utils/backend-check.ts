@@ -112,6 +112,38 @@ export function formatBackendStatus(backends: BackendInfo[]): string {
 }
 
 // ================================================================
+// Shell config helpers — auto-add paths for user
+// ================================================================
+
+function getShellConfigFile(): string | null {
+  const candidates = ['.zshrc', '.bashrc', '.bash_profile', '.profile'];
+  const home = os.homedir();
+  for (const name of candidates) {
+    const p = path.join(home, name);
+    if (fs.existsSync(p)) return p;
+  }
+  // fallback: create .zshrc on macOS
+  if (process.platform === 'darwin') {
+    return path.join(home, '.zshrc');
+  }
+  return null;
+}
+
+function ensurePathInConfig(configPath: string, binDir: string): void {
+  const exportLine = `export PATH="${binDir}:$PATH"`;
+  try {
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf-8');
+      // Skip if already present
+      if (content.includes(binDir)) return;
+    }
+    fs.appendFileSync(configPath, `\n# Added by imtoagent setup\n${exportLine}\n`);
+    // Also update current process.env for immediate detection
+    process.env.PATH = `${binDir}:${process.env.PATH}`;
+  } catch {}
+}
+
+// ================================================================
 // 自动安装后端 CLI
 // ================================================================
 
@@ -171,7 +203,8 @@ export async function installBackend(
       return false;
     }
 
-    // 安装完成后验证 — 优先用 npm bin 目录直接检查
+    // 安装完成后验证 — 按优先级依次检查
+    // 1) npm global bin
     if (npmBinDir) {
       const binPath = path.join(npmBinDir, b.type);
       try {
@@ -183,18 +216,25 @@ export async function installBackend(
       } catch {}
     }
 
-    // fallback 2: check custom install paths
+    // 2) OpenCode custom install path
     if (type === 'opencode') {
-      const opencodePath = path.join(os.homedir(), '.opencode', 'bin', 'opencode');
+      const opencodeBinDir = path.join(os.homedir(), '.opencode', 'bin');
+      const opencodePath = path.join(opencodeBinDir, 'opencode');
       if (fs.existsSync(opencodePath)) {
-        const version = execSync(`"${opencodePath}" version`, { encoding: 'utf-8', timeout: 5000 }).trim();
-        console.log(`\n✅ ${b.label} installed successfully! Version: ${version}`);
-        console.log(`   ⚠️  Add to PATH: echo 'export PATH=$HOME/.opencode/bin:$PATH' >> ~/.zshrc`);
-        return true;
+        try {
+          const version = execSync(`"${opencodePath}" version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+          // 自动配置 PATH（如果 shell 配置文件存在且未包含该行）
+          const shellConfig = getShellConfigFile();
+          if (shellConfig) {
+            ensurePathInConfig(shellConfig, opencodeBinDir);
+          }
+          console.log(`\n✅ ${b.label} installed successfully! Version: ${version}`);
+          return true;
+        } catch {}
       }
     }
 
-    // fallback 3: via PATH
+    // 3) via PATH
     const info = checkOne(b);
     if (info.installed) {
       console.log(`\n✅ ${b.label} installed successfully! Version: ${info.version}`);
