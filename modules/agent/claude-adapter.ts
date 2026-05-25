@@ -69,7 +69,7 @@ export class ClaudeAdapter implements AgentAdapter {
   private ctx: ClaudeAdapterContext;
   private activeControllers: AbortController[] = [];
   /** 单次调用最大超时（毫秒），0 = 不限制 */
-  static MAX_CALL_TIMEOUT_MS = 5 * 60 * 1000; // 5 分钟
+  static MAX_CALL_TIMEOUT_MS = 15 * 60 * 1000; // 15 分钟
 
   constructor(ctx: ClaudeAdapterContext) {
     this.ctx = ctx;

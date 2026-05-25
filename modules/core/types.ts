@@ -115,6 +115,8 @@ export interface AgentInput {
   model: string;
   /** 外部取消信号（用于 /stop 等中断命令） */
   cancelSignal?: AbortSignal;
+  /** 进度回调（适配器向用户发送中间状态，如工具调用、思考进度） */
+  sendProgress?: (text: string) => Promise<void>;
 }
 
 /** Agent 输出 */

@@ -64,12 +64,12 @@ async function ocSendPrompt(
   initialText: string,
   system: string,
   defaultModel: { providerID: string; modelID: string },
-  onTool?: (name: string, args: Record<string, any>) => void,
+  onProgress?: (text: string) => void,
   cancelSignal?: AbortSignal
 ): Promise<{ response: string; toolCalls: Array<{ name: string; summary: string }> }> {
   const MAX_TURNS = 50;
-  const TURN_TIMEOUT = 300_000;  // 5 min per turn
-  const MAX_DURATION = 600_000;  // total timeout 10 min
+  const TURN_TIMEOUT = 900_000;  // 15 min per turn
+  const MAX_DURATION = 3_600_000;  // total timeout 60 min
   const startTime = Date.now();
 
   let promptText = initialText;
@@ -79,7 +79,8 @@ async function ocSendPrompt(
 
   while (turn < MAX_TURNS) {
     if (Date.now() - startTime > MAX_DURATION) {
-      console.error('[OpenCodeAdapter] Task timed out (10min)');
+      console.error(`[OpenCodeAdapter] Task timed out (${MAX_DURATION / 60000}min)`);
+      if (onProgress) onProgress('⚠️ 任务超时，已停止');
       break;
     }
     turn++;
@@ -130,7 +131,7 @@ async function ocSendPrompt(
         const summary = args.command || args.cmd || args.file_path || args.query
           || JSON.stringify(args).slice(0, 80);
         allToolCalls.push({ name, summary });
-        if (onTool) onTool(name, args);
+        if (onProgress) onProgress(`🔧 正在执行: ${name} — ${summary.slice(0, 60)}`);
         console.log(`[OpenCodeAdapter] 🔧 turn ${turn}: ${name} ${summary.slice(0, 60)}`);
       }
     }
@@ -138,6 +139,7 @@ async function ocSendPrompt(
     // 有文本回复 → 任务完成（OpenCode 内部已完成多轮 agent loop）
     if (hasText) {
       console.log(`[OpenCodeAdapter] ✅ completed at turn ${turn}/${MAX_TURNS}`);
+      if (onProgress) onProgress(`✅ 第 ${turn} 轮处理完成`);
       break;
     }
 
@@ -147,7 +149,8 @@ async function ocSendPrompt(
       break;
     }
 
-    // 仅有 tool_call 无文本 → OpenCode 无法自行执行，推进下一轮
+    // 仅有 tool_call 无文本 → 推进下一轮
+    if (onProgress) onProgress(`⏳ 第 ${turn}/${MAX_TURNS} 轮，继续推进...`);
     promptText = 'Continue executing, complete remaining tasks';
   }
 
@@ -215,16 +218,18 @@ export class OpenCodeAdapter implements AgentAdapter {
     console.log(`[OpenCodeAdapter] 📝 system prompt built (${systemPrompt.length} chars)`);
 
     // 发送 prompt（多轮循环：自动推进 tool_call → 纯文本响应）
+    // 注意：ocSendPrompt 不直接依赖 ctx，由 handleMessage 传入 onProgress 回调
+    const onProgress = async (text: string) => {
+      try { await input.sendProgress?.(text); } catch {}
+    };
+
     const { response, toolCalls } = await ocSendPrompt(
       serverUrl,
       sessionAny.ocSessionId,
       effectiveText,
       systemPrompt,
       defaultModel,
-      // onTool 回调：适配器层不依赖外部 ctx，直接记日志
-      (name, args) => {
-        // 工具调用日志由 Runtime 层统一格式化
-      },
+      onProgress,
       input.cancelSignal
     );
 

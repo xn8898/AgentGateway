@@ -157,6 +157,7 @@ export class AgentRuntime {
           systemPrompt: ctx.systemPrompt,
           model: ctx.model,
           cancelSignal: ctx.cancelSignal,
+          sendProgress: (t: string) => ctx.sendProgress(t),
         };
 
         const output = await adapter.handleMessage(input);
