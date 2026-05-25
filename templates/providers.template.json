@@ -1,5 +1,20 @@
 {
   "providers": {
+    "dashscope": {
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "YOUR_DASHSCOPE_API_KEY",
+      "models": [
+        "qwen3.7-max",
+        "qwen3.6-plus",
+        "qwen3.6-flash"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 1.2,
+        "outputPerMillion": 6.0,
+        "currency": "CNY"
+      }
+    },
     "deepseek": {
       "baseUrl": "https://api.deepseek.com/v1",
       "apiKey": "YOUR_DEEPSEEK_API_KEY",
@@ -9,11 +24,72 @@
       ],
       "format": "openai",
       "pricing": {
-        "inputPerMillion": 0.55,
-        "outputPerMillion": 2.19,
-        "currency": "USD"
+        "inputPerMillion": 3.0,
+        "outputPerMillion": 6.0,
+        "currency": "CNY"
+      }
+    },
+    "zhipu": {
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "apiKey": "YOUR_ZHIPU_API_KEY",
+      "models": [
+        "glm-5.1",
+        "glm-5",
+        "glm-5-turbo",
+        "glm-4.7"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 1.0,
+        "outputPerMillion": 5.0,
+        "currency": "CNY"
+      }
+    },
+    "minimax": {
+      "baseUrl": "https://api.minimaxi.com/v1",
+      "apiKey": "YOUR_MINIMAX_API_KEY",
+      "models": [
+        "MiniMax-M2.7",
+        "MiniMax-M2.5"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 1.0,
+        "outputPerMillion": 4.0,
+        "currency": "CNY"
+      }
+    },
+    "moonshot": {
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiKey": "YOUR_MOONSHOT_API_KEY",
+      "models": [
+        "kimi-k2",
+        "moonshot-v1-8k",
+        "moonshot-v1-32k",
+        "moonshot-v1-128k"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 3.0,
+        "outputPerMillion": 12.0,
+        "currency": "CNY"
+      }
+    },
+    "siliconflow": {
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "YOUR_SILICONFLOW_API_KEY",
+      "models": [
+        "Qwen/Qwen3-235B-A22B",
+        "deepseek-ai/DeepSeek-V4",
+        "Qwen/Qwen3-32B"
+      ],
+      "format": "openai",
+      "pricing": {
+        "inputPerMillion": 0.5,
+        "outputPerMillion": 2.0,
+        "currency": "CNY"
       }
     }
   },
-  "defaultModel": "deepseek/deepseek-v4-pro"
+  "defaultModel": "dashscope/qwen3.7-max"
 }
