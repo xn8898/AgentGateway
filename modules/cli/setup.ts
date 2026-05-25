@@ -187,7 +187,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     name: 'DashScope (Alibaba Bailian)',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     format: 'openai',
-    models: ['qwen3.7-max', 'qwen3.6-plus', 'qwen3.6-flash'],
+    models: ['qwen3.7-max', 'qwen3.6-plus', 'qwen3.6-flash', 'qwen3.5-omni-plus'],
   },
   {
     name: 'DeepSeek',
@@ -199,7 +199,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     name: 'Zhipu AI (Zhipu)',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     format: 'openai',
-    models: ['glm-5.1', 'glm-5', 'glm-5-turbo', 'glm-4.7'],
+    models: ['glm-5.1', 'glm-5', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flashx', 'glm-4.6', 'glm-4.5-air', 'glm-4.5-airx', 'glm-4-long'],
   },
   {
     name: 'MiniMax',
@@ -217,7 +217,7 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     name: 'Moonshot (Moonshot AI)',
     baseUrl: 'https://api.moonshot.cn/v1',
     format: 'openai',
-    models: ['kimi-k2', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+    models: ['kimi-k2.6', 'kimi-k2.5', 'kimi-k2-thinking'],
   },
   {
     name: 'OpenAI',
