@@ -28,7 +28,7 @@ const BACKEND_DEFS: Omit<BackendInfo, 'installed' | 'version'>[] = [
 
 let _cachedNpmBin: string | null | undefined = undefined;
 
-function getNpmGlobalBin(): string | null {
+export function getNpmGlobalBin(): string | null {
   if (_cachedNpmBin !== undefined) return _cachedNpmBin;
   try {
     const prefix = execSync('npm get prefix', { encoding: 'utf-8', timeout: 5000 }).trim();

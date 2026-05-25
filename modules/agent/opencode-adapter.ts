@@ -10,6 +10,10 @@ import type { AgentAdapter, AgentInput, AgentOutput } from '../core/types';
 import { buildAttachmentHint } from '../core/types';
 import { buildSystemPrompt } from '../prompt-builder';
 import { getDataDir } from '../utils/paths';
+import { getNpmGlobalBin } from '../utils/backend-check';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 // ================================================================
 // OpenCodeAdapter 上下文
@@ -248,8 +252,21 @@ export async function startOpenCodeServer(): Promise<void> {
   } catch {}
 
   console.log('[OpenCodeAdapter] starting opencode serve...');
+
+  // Resolve opencode binary with fallbacks (matches checkOne() logic)
+  const home = os.homedir();
+  const customPath = path.join(home, '.opencode', 'bin', 'opencode');
+  const npmBin = getNpmGlobalBin();
+  const npmBinPath = npmBin ? path.join(npmBin, 'opencode') : null;
+  const ocBinPath =
+    (npmBinPath && fs.existsSync(npmBinPath)) ? npmBinPath :
+    fs.existsSync(customPath) ? customPath :
+    'opencode'; // fallback to PATH lookup
+
+  console.log(`[OpenCodeAdapter] Using opencode binary: ${ocBinPath}`);
+
   const child = Bun.spawn(
-    ['opencode', 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
+    [ocBinPath, 'serve', '--port', String(OC_PORT), '--hostname', '127.0.0.1'],
     {
       cwd: getDataDir(),
       env: {
