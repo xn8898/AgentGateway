@@ -226,7 +226,15 @@ echo "  Running: npm install -g imtoagent"
 echo ""
 npm install -g imtoagent 2>&1 | tail -10
 
-INSTALLED_VER=$(imtoagent --version 2>/dev/null || echo "unknown")
+# Capture version robustly: try --version, then npm list, then fallback
+INSTALLED_VER=""
+if command -v imtoagent &>/dev/null; then
+  INSTALLED_VER=$(imtoagent --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if [ -z "$INSTALLED_VER" ]; then
+    INSTALLED_VER=$(npm list -g imtoagent 2>/dev/null | grep 'imtoagent@' | sed 's/.*imtoagent@//' | head -1 || true)
+  fi
+fi
+[ -z "$INSTALLED_VER" ] && INSTALLED_VER="unknown"
 done_ok "imtoagent v${INSTALLED_VER} installed globally"
 
 # ============================================================

@@ -59,7 +59,7 @@ export function getDataDir(): string {
     // 有现成配置，直接用最优先的那个
     const chosen = candidates[0];
     _dataDir = chosen.dir;
-    console.log(`[Paths] Data directory: ${_dataDir} (${chosen.label})`);
+    console.error(`[Paths] Data directory: ${_dataDir} (${chosen.label})`);
     return _dataDir;
   }
 
@@ -119,8 +119,8 @@ function initDataDir(dotDir: string, envHome: string): string {
     }
   }
 
-  console.log(`[Paths] ✨ First-time data directory initialized: ${target} (source: ${sourceLabel || 'default template'})`);
-  console.log(`[Paths] Please edit ${path.join(target, 'config.json')} to configure your credentials`);
+  console.error(`[Paths] ✨ First-time data directory initialized: ${target} (source: ${sourceLabel || 'default template'})`);
+  console.error(`[Paths] Please edit ${path.join(target, 'config.json')} to configure your credentials`);
 
   return target;
 }
