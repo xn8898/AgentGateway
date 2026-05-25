@@ -209,7 +209,11 @@ step "4. Installing imtoagent"
 # Check if already installed
 EXISTING_VER=""
 if command -v imtoagent &>/dev/null; then
-  EXISTING_VER=$(imtoagent --version 2>/dev/null || echo "unknown")
+  EXISTING_VER=$(imtoagent --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if [ -z "$EXISTING_VER" ]; then
+    EXISTING_VER=$(npm list -g imtoagent 2>/dev/null | grep 'imtoagent@' | sed 's/.*imtoagent@//' | head -1 || true)
+  fi
+  [ -z "$EXISTING_VER" ] && EXISTING_VER="unknown"
   warn "Already installed: v${EXISTING_VER}"
   echo ""
   if [ "$NON_INTERACTIVE" = true ]; then
