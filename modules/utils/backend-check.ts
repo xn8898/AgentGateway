@@ -17,7 +17,7 @@ export interface BackendInfo {
 const BACKEND_DEFS: Omit<BackendInfo, 'installed' | 'version'>[] = [
   { type: 'claude', label: 'Claude Code', installHint: 'npm install -g @anthropic-ai/claude-agent-sdk' },
   { type: 'codex',  label: 'Codex',       installHint: 'npm install -g @openai/codex' },
-  { type: 'opencode', label: 'OpenCode',   installHint: 'npm install -g opencode' },
+  { type: 'opencode', label: 'OpenCode',   installHint: 'curl -fsSL https://opencode.ai/install | bash' },
 ];
 
 // ================================================================

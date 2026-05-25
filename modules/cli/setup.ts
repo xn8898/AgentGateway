@@ -291,6 +291,17 @@ const IM_FIELDS: Record<string, { key: string; label: string; required: boolean 
 // ================================================================
 
 export async function runSetupWizard(): Promise<void> {
+  // Guard: refuse to run in non-TTY environment
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    console.error('');
+    console.error('❌ Setup wizard requires an interactive terminal (TTY).');
+    console.error('   If you installed via "curl | bash", run these commands manually:');
+    console.error('');
+    console.error('   imtoagent setup');
+    console.error('');
+    process.exit(1);
+  }
+
   const dataDir = getDataDir();
   const configPath = path.join(dataDir, 'config.json');
 
