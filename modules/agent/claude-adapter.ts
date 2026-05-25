@@ -100,6 +100,10 @@ export class ClaudeAdapter implements AgentAdapter {
     const { text, session, workingDir, model, systemPrompt: overrideSystemPrompt } = input;
     const sessionAny = session as any; // 向后兼容：访问旧字段
 
+    // 进度回调
+    const onProgress = async (t: string) => { try { await input.sendProgress?.(t); } catch {} };
+    let turnCount = 0;
+
     // 创建 AbortController 并注册（用于超时 + shutdown 清理）
     const abortCtrl = new AbortController();
     this.activeControllers.push(abortCtrl);
@@ -205,6 +209,16 @@ export class ClaudeAdapter implements AgentAdapter {
       const calls = extractToolCalls(msg);
       toolCalls.push(...calls);
 
+      // 进度输出（仅 assistant 消息）
+      if (msg.type === 'assistant') {
+        turnCount++;
+        if (calls.length > 0) {
+          const names = calls.map(c => c.name).join(', ');
+          const summary = calls[0].summary.slice(0, 60);
+          onProgress(`🔧 Executing: ${names} — ${summary}`);
+        }
+      }
+
       // 处理最终结果
       if (msg.type === 'result') {
         const result = msgAny;
@@ -222,6 +236,7 @@ export class ClaudeAdapter implements AgentAdapter {
         };
 
         if (timeoutId) clearTimeout(timeoutId);
+        if (turnCount > 0) onProgress(`✅ Turn ${turnCount} completed`);
         const responseText = fullResponse || `✅ Completed (${toolCalls.length} steps)`;
 
         return {

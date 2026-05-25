@@ -106,8 +106,9 @@ async function spawnCodexResume(cwd: string, threadId: string, prompt: string): 
 
 async function runViaAppServer(
   cwd: string, prompt: string, chatId: string, session: Session,
-  isFresh: boolean
+  isFresh: boolean, onProgress?: (text: string) => Promise<void>
 ): Promise<{ threadId: string; response: string; usage: { inputTokens: number; outputTokens: number } }> {
+  let turnCount = 0;
   const manager = getAppServerManager();
   const client = await manager.getClient(chatId);
 
@@ -138,9 +139,14 @@ async function runViaAppServer(
       case 'text_delta':
         response += event.textDelta || '';
         break;
-      case 'tool_call':
-        break; // tool 日志由 Runtime 层处理
+      case 'tool_call': {
+        const name = (event as any).toolCall?.name || (event as any).tool?.name || 'Tool';
+        onProgress?.(`🔧 Executing: ${name}`);
+        break;
+      }
       case 'turn_result':
+        turnCount++;
+        onProgress?.(`✅ Turn ${turnCount} completed`);
         totalUsage.inputTokens += event.usage?.inputTokens || 0;
         totalUsage.outputTokens += event.usage?.outputTokens || 0;
         break;
@@ -189,7 +195,8 @@ export class CodexAdapter implements AgentAdapter {
     let execServerUsage: { inputTokens: number; outputTokens: number } | null = null;
 
     try {
-      const r = await runViaAppServer(cwd, effectiveText, input.chatId, session, isFresh);
+      const r = await runViaAppServer(cwd, effectiveText, input.chatId, session, isFresh,
+      async (t: string) => { try { await input.sendProgress?.(t); } catch {} });
       response = r.response;
       execServerUsage = r.usage;
     } catch (appErr: any) {
@@ -199,7 +206,8 @@ export class CodexAdapter implements AgentAdapter {
       if (errMsg.includes('thread not found') || errMsg.includes('Thread not found')) {
         try {
           sessionAny.codexThreadId = undefined;
-          const r2 = await runViaAppServer(cwd, effectiveText, input.chatId, session, true);
+          const r2 = await runViaAppServer(cwd, effectiveText, input.chatId, session, true,
+            async (t: string) => { try { await input.sendProgress?.(t); } catch {} });
           response = r2.response;
           execServerUsage = r2.usage;
           console.error(`[CodexAdapter] app-server thread rebuilt successfully`);
@@ -213,6 +221,7 @@ export class CodexAdapter implements AgentAdapter {
 
     if (useExecFallback) {
       getAppServerManager().removeClient(input.chatId);
+      input.sendProgress?.('⚙️ Processing... (CLI mode, no streaming progress)').catch(() => {});
       if (isFresh || !sessionAny.codexThreadId) {
         const r = await spawnCodexExec(cwd, effectiveText);
         sessionAny.codexThreadId = r.threadId;

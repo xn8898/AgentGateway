@@ -80,7 +80,7 @@ async function ocSendPrompt(
   while (turn < MAX_TURNS) {
     if (Date.now() - startTime > MAX_DURATION) {
       console.error(`[OpenCodeAdapter] Task timed out (${MAX_DURATION / 60000}min)`);
-      if (onProgress) onProgress('⚠️ 任务超时，已停止');
+      if (onProgress) onProgress('⚠️ Task timed out, stopped');
       break;
     }
     turn++;
@@ -131,7 +131,7 @@ async function ocSendPrompt(
         const summary = args.command || args.cmd || args.file_path || args.query
           || JSON.stringify(args).slice(0, 80);
         allToolCalls.push({ name, summary });
-        if (onProgress) onProgress(`🔧 正在执行: ${name} — ${summary.slice(0, 60)}`);
+        if (onProgress) onProgress(`🔧 Executing: ${name} — ${summary.slice(0, 60)}`);
         console.log(`[OpenCodeAdapter] 🔧 turn ${turn}: ${name} ${summary.slice(0, 60)}`);
       }
     }
@@ -139,7 +139,7 @@ async function ocSendPrompt(
     // 有文本回复 → 任务完成（OpenCode 内部已完成多轮 agent loop）
     if (hasText) {
       console.log(`[OpenCodeAdapter] ✅ completed at turn ${turn}/${MAX_TURNS}`);
-      if (onProgress) onProgress(`✅ 第 ${turn} 轮处理完成`);
+      if (onProgress) onProgress(`✅ Turn ${turn} completed`);
       break;
     }
 
@@ -150,7 +150,7 @@ async function ocSendPrompt(
     }
 
     // 仅有 tool_call 无文本 → 推进下一轮
-    if (onProgress) onProgress(`⏳ 第 ${turn}/${MAX_TURNS} 轮，继续推进...`);
+    if (onProgress) onProgress(`⏳ Turn ${turn}/${MAX_TURNS}, continuing...`);
     promptText = 'Continue executing, complete remaining tasks';
   }
 
