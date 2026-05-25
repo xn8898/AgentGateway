@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # imtoagent — One-Click Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/imtoagent/imtoagent/main/docs/install.sh | bash
 #
 # This script detects the environment, installs dependencies, installs/upgrades
 # imtoagent, and optionally runs the interactive setup wizard.

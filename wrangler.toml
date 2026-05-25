@@ -1,0 +1,11 @@
+# Cloudflare Pages configuration
+# https://developers.cloudflare.com/pages/configuration/
+#
+# Build settings in CF Pages dashboard:
+#   Framework preset: None
+#   Build command: (empty)
+#   Build output directory: docs/
+
+[build]
+command = ""
+destination = "docs"
