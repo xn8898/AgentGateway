@@ -156,6 +156,7 @@ export class AgentRuntime {
           workingDir: ctx.workingDir,
           systemPrompt: ctx.systemPrompt,
           model: ctx.model,
+          cancelSignal: ctx.cancelSignal,
         };
 
         const output = await adapter.handleMessage(input);

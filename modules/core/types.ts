@@ -113,6 +113,8 @@ export interface AgentInput {
   workingDir: string;
   systemPrompt?: string;
   model: string;
+  /** 外部取消信号（用于 /stop 等中断命令） */
+  cancelSignal?: AbortSignal;
 }
 
 /** Agent 输出 */
@@ -165,6 +167,8 @@ export interface MessageContext {
   sendBlocks?: (blocks: UnifiedBlock[]) => Promise<void>;
   /** IM 能力声明，用于 parseToBlocks 正确解析 */
   imCaps?: IMCapabilities;
+  /** 外部取消信号（用于 /stop 等中断命令） */
+  cancelSignal?: AbortSignal;
 }
 
 /** Session 管理器 */

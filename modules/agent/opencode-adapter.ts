@@ -64,7 +64,8 @@ async function ocSendPrompt(
   initialText: string,
   system: string,
   defaultModel: { providerID: string; modelID: string },
-  onTool?: (name: string, args: Record<string, any>) => void
+  onTool?: (name: string, args: Record<string, any>) => void,
+  cancelSignal?: AbortSignal
 ): Promise<{ response: string; toolCalls: Array<{ name: string; summary: string }> }> {
   const MAX_TURNS = 50;
   const TURN_TIMEOUT = 300_000;  // 5 min per turn
@@ -92,15 +93,29 @@ async function ocSendPrompt(
 
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), TURN_TIMEOUT);
-    const res = await fetch(`${serverUrl}/session/${sessionId}/message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: ac.signal,
-    }).finally(() => clearTimeout(timer));
-    if (!res.ok) throw new Error(`oc send prompt (turn ${turn}): ${res.status} ${await res.text()}`);
-
-    const data: OcMessage = await res.json();
+    // 组合外部取消信号（/stop）+ 本层超时
+    const signal = cancelSignal ? AbortSignal.any([ac.signal, cancelSignal]) : ac.signal;
+    let data: OcMessage;
+    try {
+      const res = await fetch(`${serverUrl}/session/${sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      }).finally(() => clearTimeout(timer));
+      if (!res.ok) throw new Error(`oc send prompt (turn ${turn}): ${res.status} ${await res.text()}`);
+      data = await res.json();
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        // 外部取消（/stop）优先于超时
+        if (cancelSignal?.aborted) {
+          console.log('[OpenCodeAdapter] ⏹️ Task cancelled by user (/stop)');
+          return { response: '⏹️ 任务已取消', toolCalls: allToolCalls };
+        }
+        throw err; // 超时等其它 AbortError 继续抛出
+      }
+      throw err;
+    }
     let hasToolCall = false;
     let hasText = false;
 
@@ -209,7 +224,8 @@ export class OpenCodeAdapter implements AgentAdapter {
       // onTool 回调：适配器层不依赖外部 ctx，直接记日志
       (name, args) => {
         // 工具调用日志由 Runtime 层统一格式化
-      }
+      },
+      input.cancelSignal
     );
 
     return {

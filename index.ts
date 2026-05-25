@@ -306,6 +306,8 @@ class Bot {
   sessions: Map<string, ChatSession> = new Map();
   commands: Map<string, CommandHandler> = new Map();
   adapter: AgentAdapter;
+  /** 正在执行的任务的取消信号（chatId → AbortController） */
+  activeControllers: Map<string, AbortController> = new Map();
 
   constructor(cfg: BotConfig, globalConfig: any) {
     this.id = cfg.id || cfg.name; // 后向兼容：无 id 时用 name
@@ -466,7 +468,7 @@ class Bot {
       let out = '📋 **CC Quick Commands**\n\n';
       out += '/status — Status\n/info — Config\n/stats — Stats\n';
       out += '/model — Model Switch\n/providers — Providers\n';
-      out += '/dir — Directory\n/clear — Clear\n';
+      out += '/dir — Directory\n/clear — Clear\n/stop — Stop current task\n';
       if (this.backend === 'claude') out += '/mode — Permission\n';
       else if (this.backend === 'codex') out += '/mode — Mode(auto/plan)\n';
       out += '/memory — Overview\n/soul — Soul\n/reload — Reload';
@@ -493,6 +495,13 @@ class Bot {
         return '🗑 Conversation cleared (next message will start a fresh session)';
       }
       return '✅ No active conversation';
+    });
+
+    cmd('/stop', ({ chatId }) => {
+      const ctrl = this.activeControllers.get(chatId);
+      if (!ctrl) return '✅ 没有正在执行的任务';
+      ctrl.abort();
+      return '⏹️ 任务已取消';
     });
 
     cmd('/model', ({ args }) => {
@@ -678,6 +687,8 @@ class Bot {
   // ===== 消息处理 — SDK 完整接入 =====
   async handleMessage(chatId: string, text: string, userId: string, attachments?: MessageAttachment[]) {
     activeRequests++;
+    const controller = new AbortController();
+    this.activeControllers.set(chatId, controller);
     try {
       // 限流
       const rlResult = checkRateLimit(chatId);
@@ -715,6 +726,7 @@ class Bot {
         sendProgress: async (t: string) => this.sendProgress(chatId, t),
         sendBlocks: async (blocks) => this.sendFormattedReplyDirect(chatId, blocks),
         imCaps: this.im.getCapabilities(),
+        cancelSignal: controller.signal,
       }, this.adapter, this.id);
 
       // Agent 自主重启信号检测
@@ -728,6 +740,7 @@ class Bot {
       console.error(`[${this.name}] handleMessage error: ${e.message}`);
       await this.reply(chatId, `❌ ${e.message}`);
     } finally {
+      this.activeControllers.delete(chatId);
       activeRequests--;
     }
   }
