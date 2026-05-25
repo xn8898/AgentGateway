@@ -37,6 +37,8 @@ done_ok() { echo -e "  ${GREEN}✓${NC} $1"; }
 NON_INTERACTIVE=false
 SKIP_BUN=false
 SKIP_START=false
+NEED_SETUP=false
+SETUP_COMPLETED=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -258,10 +260,13 @@ if [ "$NEED_SETUP" = true ]; then
     echo ""
     echo "  Run 'imtoagent setup' manually to configure."
   elif [ ! -t 0 ]; then
-    warn "No TTY detected — cannot run interactive setup wizard"
+    # stdin is a pipe (e.g. curl | bash) — interactive setup impossible
+    NEED_SETUP=true
     echo ""
-    echo "  Setup requires a real terminal. After this script finishes, run:"
-    echo "    imtoagent setup"
+    echo -e "${YELLOW}${BOLD}  📋 Setup required but not possible in this mode (no TTY detected).${NC}"
+    echo -e "${YELLOW}     After this script finishes, run:${NC}"
+    echo -e "${YELLOW}       ${BOLD}imtoagent setup${NC}"
+    echo ""
   else
     echo ""
     echo "  Starting interactive setup wizard..."
@@ -277,7 +282,7 @@ if [ "$NEED_SETUP" = true ]; then
         ;;
       *)
         echo ""
-        imtoagent setup
+        imtoagent setup && { SETUP_COMPLETED=true; NEED_SETUP=false; }
         ;;
     esac
   fi
@@ -296,23 +301,54 @@ else
     warn "Gateway already running"
     imtoagent status 2>/dev/null || true
   else
-    if [ "$NON_INTERACTIVE" = true ]; then
-      info "Non-interactive mode — starting gateway in background"
-      imtoagent start
-      sleep 3
-      imtoagent status 2>/dev/null || true
-    else
-      read -rp "  Start gateway now? [Y/n] " START_GATEWAY
-      case "$START_GATEWAY" in
+    # Skip gateway start if setup is still needed — the gateway won't work without config
+    if [ "$NEED_SETUP" = true ] && [ -t 0 ]; then
+      read -rp "  Skip gateway start and run setup now? [Y/n] " SKIP_GW
+      case "$SKIP_GW" in
         [nN]*)
           info "Not starting. Run 'imtoagent start' when ready."
           ;;
         *)
+          echo ""
+          imtoagent setup && SETUP_COMPLETED=true
+          # Re-check if config now exists before trying to start
+          if [ -f "$CONFIG_FILE" ] && grep -q '"botType"' "$CONFIG_FILE" 2>/dev/null; then
+            read -rp "  Start gateway now? [Y/n] " START_GATEWAY
+            case "$START_GATEWAY" in
+              [nN]*) info "Not starting now. Run 'imtoagent start' when ready." ;;
+              *)
+                imtoagent start
+                sleep 3
+                imtoagent status 2>/dev/null || true
+                ;;
+            esac
+          fi
+          ;;
+      esac
+    else
+      # Non-TTY or non-interactive: skip gateway start entirely
+      if [ "$NEED_SETUP" = true ]; then
+        info "Gateway not started — run 'imtoagent setup' first, then 'imtoagent start'"
+      else
+        if [ "$NON_INTERACTIVE" = true ]; then
+          info "Non-interactive mode — starting gateway in background"
           imtoagent start
           sleep 3
           imtoagent status 2>/dev/null || true
-          ;;
-      esac
+        else
+          read -rp "  Start gateway now? [Y/n] " START_GATEWAY
+          case "$START_GATEWAY" in
+            [nN]*)
+              info "Not starting. Run 'imtoagent start' when ready."
+              ;;
+            *)
+              imtoagent start
+              sleep 3
+              imtoagent status 2>/dev/null || true
+              ;;
+          esac
+        fi
+      fi
     fi
   fi
 fi
@@ -329,13 +365,27 @@ echo "  Version:  v${INSTALLED_VER}"
 echo "  Config:   ${CONFIG_FILE}"
 echo "  Logs:     ${CONFIG_DIR}/logs/"
 echo ""
-echo "  Quick commands:"
-echo "    imtoagent status    # Check gateway status"
-echo "    imtoagent stop      # Stop the gateway"
-echo "    imtoagent setup     # Configure bots"
-echo "    imtoagent restore   # Hot reload"
-echo ""
-echo "  Send ${BOLD}/help${NC} to your Bot in IM to see available commands."
-echo ""
+
+if [ "$NEED_SETUP" = true ]; then
+  echo -e "${YELLOW}${BOLD}  ⚠️  Setup Required${NC}"
+  echo ""
+  echo "  You need to configure at least one bot before the gateway can start."
+  echo ""
+  echo "  Quick commands:"
+  echo -e "    ${GREEN}${BOLD}imtoagent setup${NC}       Interactive configuration wizard"
+  echo -e "    ${BOLD}imtoagent start${NC}       Start gateway in background"
+  echo -e "    ${BOLD}imtoagent status${NC}      Check gateway status"
+  echo -e "    ${BOLD}imtoagent stop${NC}        Stop the gateway"
+  echo ""
+else
+  echo "  Quick commands:"
+  echo -e "    ${BOLD}imtoagent status${NC}      Check gateway status"
+  echo -e "    ${BOLD}imtoagent stop${NC}        Stop the gateway"
+  echo -e "    ${BOLD}imtoagent setup${NC}       Add more bots"
+  echo -e "    ${BOLD}imtoagent restore${NC}     Hot reload"
+  echo ""
+  echo "  Send ${BOLD}/help${NC} to your Bot in IM to see available commands."
+fi
+
 echo "  Docs: https://github.com/imtoagent/imtoagent"
 echo ""
