@@ -5,9 +5,104 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>imtoagent — IM ↔ Agent Unified Gateway</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <!-- docsify-themeable -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
   <style>
     :root {
       --theme-color: #4a90d9;
+      --theme-color-dark: #357abd;
+      --base-font-size: 16px;
+      --base-line-height: 1.8;
+      --heading-font-weight: 600;
+      --blockquote-color: var(--theme-color);
+      --sidebar-name-color: var(--theme-color);
+      --sidebar-nav-link-color: #444;
+      --sidebar-nav-link-font-weight: 400;
+      --sidebar-nav-link-active-color: var(--theme-color);
+      --sidebar-nav-link-active-font-weight: 600;
+      --sidebar-nav-link-before-content: '';
+      --sidebar-nav-pagelink-background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23999'%3E%3Cpath d='M6 4l4 4-4 4'/%3E%3C/svg%3E") no-repeat center left;
+      --cover-max-width: 48em;
+      --cover-blockquote-color: var(--theme-color);
+      --notice-color: #e8f4fd;
+      --code-font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+      --code-inline-color: var(--theme-color);
+      --code-inline-background: #f0f4f8;
+      --code-inline-padding: 0.15em 0.4em;
+      --code-inline-radius: 4px;
+      --code-block-color: #f8f9fa;
+      --code-block-radius: 8px;
+      --code-block-tab-background: #eef1f5;
+      --code-block-tab-color: #666;
+    }
+
+    /* Cover page center */
+    .cover .cover-main { margin-top: -2em; }
+    .cover .cover-main > p:last-child { margin: 1.5em 0; }
+    .cover .cover-main .action { margin: 0.5em; }
+    .cover .cover-main .action .button {
+      border-radius: 8px;
+      padding: 0.6em 1.8em;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+    }
+    .cover .cover-main .action .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(74, 144, 217, 0.3);
+    }
+    .cover .cover-main h1 a { font-weight: 700; }
+
+    /* Sidebar */
+    .sidebar { padding: 0; }
+    .sidebar-nav > ul { padding-left: 0; }
+    .sidebar-nav li { margin: 2px 0; }
+    .sidebar-nav a { border-radius: 4px; margin: 0 8px; padding: 4px 8px; transition: all 0.15s ease; }
+    .sidebar-nav a:hover { background: #f0f4f8; }
+    .sidebar-nav .active > a { background: var(--theme-color); color: #fff !important; }
+
+    /* Content */
+    .markdown-section { max-width: 860px; padding: 2em 1em; }
+    .markdown-section h1 { border-bottom: 2px solid var(--theme-color); padding-bottom: 0.3em; }
+    .markdown-section h2 { border-bottom: 1px solid #e8e8e8; padding-bottom: 0.2em; }
+    .markdown-section img { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+    /* Tables */
+    .markdown-section table { border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .markdown-section table thead th { background: #f5f7fa; font-weight: 600; }
+
+    /* Blockquote */
+    .markdown-section blockquote {
+      border-left: 4px solid var(--theme-color);
+      background: #f8fbff;
+      border-radius: 0 6px 6px 0;
+      padding: 0.8em 1em;
+    }
+
+    /* Copy button */
+    .docsify-copy-code-button { border-radius: 4px; font-size: 12px; }
+
+    /* Badge-like styling for code blocks */
+    pre[data-lang]::before {
+      content: attr(data-lang);
+      position: absolute;
+      top: 6px;
+      right: 60px;
+      font-size: 11px;
+      color: #999;
+      font-family: var(--code-font-family);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .cover .cover-main h1 { font-size: 2em; }
+      .cover .cover-main .action .button { padding: 0.5em 1.2em; font-size: 0.9rem; }
     }
   </style>
 </head>
@@ -15,28 +110,43 @@
   <div id="app">Loading...</div>
   <script>
     window.$docsify = {
-      name: 'imtoagent',
+      name: '⚡ imtoagent',
       repo: 'https://github.com/imtoagent/imtoagent',
+      coverpage: true,
       loadSidebar: true,
       subMaxLevel: 3,
       auto2top: true,
+      executeScript: true,
+      mergeNavbar: true,
+      topMargin: 60,
+      themeColor: '#4a90d9',
+      themeable: {
+        readyTransition: true,
+        responsiveTables: true
+      },
       search: {
         maxAge: 86400000,
         paths: 'auto',
         placeholder: 'Search...',
         noData: 'No results.'
       },
-      pagination: {
-        previousText: '← Previous',
-        nextText: 'Next →'
+      copyCode: {
+        buttonText: '📋 Copy',
+        errorText: '❌ Failed',
+        successText: '✅ Copied!'
       }
     }
   </script>
-  <!-- China-friendly CDN (staticfile) -->
-  <script src="https://cdn.staticfile.org/docsify/4.13.1/docsify.min.js"></script>
-  <script src="https://cdn.staticfile.org/docsify/4.13.1/plugins/search.min.js"></script>
-  <script src="https://cdn.staticfile.org/prism/1.29.0/components/prism-bash.min.js"></script>
-  <script src="https://cdn.staticfile.org/prism/1.29.0/components/prism-json.min.js"></script>
-  <script src="https://cdn.staticfile.org/prism/1.29.0/components/prism-typescript.min.js"></script>
+  <!-- docsify core -->
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <!-- plugins -->
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/zoom-image.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@3/dist/docsify-copy-code.min.js"></script>
+  <!-- syntax highlight -->
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-typescript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-yaml.min.js"></script>
 </body>
 </html>
