@@ -4,6 +4,7 @@
 
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 export interface BackendInfo {
@@ -60,10 +61,10 @@ function checkOne(b: Omit<BackendInfo, 'installed' | 'version'>): BackendInfo {
     const version = execSync(versionCmd[b.type], { encoding: 'utf-8', timeout: 5000 }).trim();
     return { ...b, installed: true, version };
   } catch {
-    // PATH 中找不到，继续尝试 npm global bin
+    // PATH 中找不到，继续尝试 fallback
   }
 
-  // fallback：直接从 npm global bin 目录运行
+  // fallback 1: npm global bin
   const npmBin = getNpmGlobalBin();
   if (npmBin) {
     const binPath = path.join(npmBin, b.type);
@@ -75,6 +76,17 @@ function checkOne(b: Omit<BackendInfo, 'installed' | 'version'>): BackendInfo {
     } catch {
       // bin 存在但执行失败，视为未安装
     }
+  }
+
+  // fallback 2: OpenCode custom install path
+  if (b.type === 'opencode') {
+    const opencodePath = path.join(os.homedir(), '.opencode', 'bin', 'opencode');
+    try {
+      if (fs.existsSync(opencodePath)) {
+        const version = execSync(`"${opencodePath}" version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+        return { ...b, installed: true, version };
+      }
+    } catch {}
   }
 
   return { ...b, installed: false, version: null };
@@ -171,7 +183,18 @@ export async function installBackend(
       } catch {}
     }
 
-    // fallback: 通过 PATH 查找
+    // fallback 2: check custom install paths
+    if (type === 'opencode') {
+      const opencodePath = path.join(os.homedir(), '.opencode', 'bin', 'opencode');
+      if (fs.existsSync(opencodePath)) {
+        const version = execSync(`"${opencodePath}" version`, { encoding: 'utf-8', timeout: 5000 }).trim();
+        console.log(`\n✅ ${b.label} installed successfully! Version: ${version}`);
+        console.log(`   ⚠️  Add to PATH: echo 'export PATH=$HOME/.opencode/bin:$PATH' >> ~/.zshrc`);
+        return true;
+      }
+    }
+
+    // fallback 3: via PATH
     const info = checkOne(b);
     if (info.installed) {
       console.log(`\n✅ ${b.label} installed successfully! Version: ${info.version}`);
