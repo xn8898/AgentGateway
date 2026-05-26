@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"E:\\\\work\\\\2026\\\\ai\\\\ai-gateway\")",
+      "Bash(gh repo *)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(git clone *)",
+      "Bash(claude plugin *)",
+      "mcp__open-websearch__search",
+      "mcp__open-websearch__fetchWebContent",
+      "mcp__mcp-deepwiki__deepwiki_fetch",
+      "mcp__open-websearch__fetchGithubReadme",
+      "Bash(bun --version)",
+      "Bash(git ls-remote *)",
+      "Bash(bun install *)",
+      "Bash(bun run *)",
+      "Bash(git remote *)",
+      "Bash(git add *)"
+    ]
+  }
+}
