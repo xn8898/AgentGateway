@@ -3,10 +3,9 @@ import type { ApprovalRequest } from "../core/types.js";
 
 export function createRequest(dbPath: string, req: Omit<ApprovalRequest, "id" | "createdAt">): number {
   const db = getDb(dbPath);
-  const result = db.run(
-    "INSERT INTO approval_requests (session_id, agent_id, channel_id, chat_id, prompt, options, detail, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')",
-    req.sessionId, req.agentId, req.channelId, req.chatId, req.prompt, JSON.stringify(req.options), req.detail || null
-  );
+  const result = db.prepare(
+    "INSERT INTO approval_requests (session_id, agent_id, channel_id, chat_id, prompt, options, detail, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
+  ).run(req.sessionId, req.agentId, req.channelId, req.chatId, req.prompt, JSON.stringify(req.options), req.detail || null);
   return result.lastInsertRowid as number;
 }
 

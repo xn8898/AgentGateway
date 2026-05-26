@@ -16,7 +16,20 @@
       "Bash(bun install *)",
       "Bash(bun run *)",
       "Bash(git remote *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(npx tsc *)",
+      "Bash(bun -e \"import\\('./modules/core/types.ts'\\).then\\(\\(\\) => console.log\\('OK: types.ts imports successfully'\\)\\).catch\\(e => { console.error\\('FAIL:', e.message\\); process.exit\\(1\\); }\\)\")",
+      "Bash(bun add *)",
+      "Bash(bun build *)",
+      "Bash(bun -e ' *)",
+      "Bash(bun remove *)",
+      "Bash(bun -e \"import\\('./modules/core/Router.ts'\\)\")",
+      "Bash(bun x *)",
+      "Bash(bun -e \"import\\('./index.ts'\\).catch\\(e => { console.error\\(e.message\\); process.exit\\(1\\) }\\)\")",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(bun *)",
+      "Bash(git -C E:/work/2026/ai/ai-gateway status --short)"
     ]
   }
 }

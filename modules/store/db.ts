@@ -2,18 +2,20 @@ import { Database } from "bun:sqlite";
 import { join } from "path";
 import { mkdirSync, existsSync } from "fs";
 
-let db: Database | null = null;
+const dbCache = new Map<string, Database>();
 
 export function getDb(dbPath: string): Database {
-  if (db) return db;
+  const cached = dbCache.get(dbPath);
+  if (cached) return cached;
   const dir = join(dbPath, "..");
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
-  db = new Database(dbPath);
+  const db = new Database(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   initSchema(db);
+  dbCache.set(dbPath, db);
   return db;
 }
 
@@ -89,9 +91,17 @@ function initSchema(db: Database) {
   `);
 }
 
-export function closeDb() {
-  if (db) {
-    db.close();
-    db = null;
+export function closeDb(dbPath?: string) {
+  if (dbPath) {
+    const db = dbCache.get(dbPath);
+    if (db) {
+      db.close();
+      dbCache.delete(dbPath);
+    }
+  } else {
+    for (const [key, db] of dbCache) {
+      db.close();
+    }
+    dbCache.clear();
   }
 }

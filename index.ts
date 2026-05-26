@@ -18,7 +18,6 @@ import {
 } from './modules/proxy/anthropic-proxy';
 import { parseToBlocks } from './modules/capabilities';
 import { resolveCapabilities } from './modules/prompt-builder';
-import { getDataDir } from './modules/utils/paths';
 import { FeishuIMModule } from './modules/im/feishu';
 import { TelegramAdapter } from './modules/im/telegram';
 import { WeComIMModule } from './modules/im/wecom';
@@ -97,6 +96,7 @@ import * as agentStore from './modules/store/agent-store';
 import * as sessionStore from './modules/store/session-store';
 import * as conversationStore from './modules/store/conversation-store';
 import * as approvalStore from './modules/store/approval-store';
+import * as notificationStore from './modules/store/notification-store';
 
 // ===== 全局活跃请求计数 =====
 let activeRequests = 0;
@@ -895,13 +895,15 @@ async function handleGatewayMessage(
     if (approvalReq) {
       const answer = parseApprovalAnswer(text);
       if (answer) {
-        approvalStore.respondToRequest(dbPath, approvalReq.id, answer, answer === 'n' ? 'denied' : 'approved');
+        const status = answer === 'n' ? 'denied' : 'approved';
+        approvalStore.respondToRequest(dbPath, approvalReq.id, answer, status);
         const adapter = adapters.get(activeSession.agent_id);
         if (adapter?.sendApprovalResponse) {
           await adapter.sendApprovalResponse(activeSession.agent_session_id, answer);
         }
         sessionStore.updateSessionStatus(dbPath, activeSession.id, 'busy');
-        await bot.reply(chatId, `✅ 已发送确认：${answer}`);
+        const labels: Record<string, string> = { y: '是', n: '否', a: '总是允许', d: '完成' };
+        await bot.reply(chatId, `✅ 已发送确认：${labels[answer] || answer}`);
         return;
       }
     }
@@ -961,14 +963,17 @@ async function handleGatewayMessage(
 
     const output = await adapter.handleMessage(agentInput);
 
-    // 记录 Agent 回复
-    if (output.text) {
-      conversationStore.saveMessage(dbPath, route.target, channelId, chatId, 'agent', output.text);
-      await bot.reply(chatId, output.text);
+    // 更新 Agent 侧会话 ID
+    if (output.text && agentInput.session.backendSessionId !== session.agent_session_id) {
+      sessionStore.updateAgentSessionId(dbPath, session.id, agentInput.session.backendSessionId || '');
     }
 
+    // 记录 Agent 回复
     if (output.error) {
       await bot.reply(chatId, `❌ ${output.error}`);
+    } else if (output.text) {
+      conversationStore.saveMessage(dbPath, route.target, channelId, chatId, 'agent', output.text);
+      await bot.reply(chatId, output.text);
     }
 
     sessionStore.updateSessionStatus(dbPath, session.id, 'idle');
@@ -1190,7 +1195,8 @@ async function main() {
   gatewayConfig = loadGatewayConfig(GATEWAY_CONFIG_PATH);
 
   if (gatewayConfig?.agents && Object.keys(gatewayConfig.agents).length > 0) {
-    gatewayDbPath = gatewayConfig.storage?.db_path || './data/gateway.db';
+    const configuredDbPath = gatewayConfig.storage?.db_path || './data/gateway.db';
+    gatewayDbPath = path.isAbsolute(configuredDbPath) ? configuredDbPath : path.join(getDataDir(), configuredDbPath);
     getDb(gatewayDbPath);
 
     // 注册 Agent 实例
@@ -1204,6 +1210,9 @@ async function main() {
 
     // 创建 Router
     const defaultAgent = gatewayConfig.routing?.default_agent || agentConfigs[0]?.id || '';
+    if (!defaultAgent) {
+      console.warn('[Gateway] WARNING: No default_agent configured and no agents available. Unprefixed messages will fail.');
+    }
     gatewayRouter = new Router(agentConfigs, defaultAgent);
 
     // 创建 NotificationQueue
@@ -1228,6 +1237,17 @@ async function main() {
     }
 
     console.log(`[Gateway] Loaded ${agentConfigs.length} agents, default: ${defaultAgent}`);
+
+    // 定期清理过期数据（每小时）
+    setInterval(() => {
+      try {
+        notificationStore.cleanupOld(gatewayDbPath, 7);
+        conversationStore.cleanupOld(gatewayDbPath, gatewayConfig.storage?.retention_days || 30);
+        approvalStore.cleanupOld(gatewayDbPath, 7);
+      } catch (e: any) {
+        console.error(`[Gateway] Cleanup error: ${e.message}`);
+      }
+    }, 60 * 60 * 1000);
   }
 
   // 启动 Bot 消息监听
