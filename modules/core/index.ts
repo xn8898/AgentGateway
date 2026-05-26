@@ -37,3 +37,7 @@ export { FileConfigManager } from './config';
 
 // 运行时
 export { AgentRuntime } from './runtime';
+
+// 通知队列（iLink 捎带推送）
+export { NotificationQueue } from './NotificationQueue';
+export type { ChannelLike } from './NotificationQueue';
