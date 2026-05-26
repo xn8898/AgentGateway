@@ -1,10 +1,27 @@
 {
   "name": "imtoagent",
   "version": "0.3.21",
-  "description": "IM ↔ Agent 统一网关 — 飞书/Telegram/微信/企业微信对接 Claude Code/Codex/OpenCode",
-  "type": "module",
+  "author": "Keyi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imtoagent/imtoagent.git",
+    "directory": ""
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
+    "@larksuiteoapi/node-sdk": "^1.62.0",
+    "@wecom/aibot-node-sdk": "^1.0.7",
+    "qrcode": "^1.5.4"
+  },
   "bin": {
     "imtoagent": "./bin/imtoagent.cjs"
+  },
+  "bugs": {
+    "url": "https://github.com/imtoagent/imtoagent/issues"
+  },
+  "description": "IM ↔ Agent 统一网关 — 飞书/Telegram/微信/企业微信对接 Claude Code/Codex/OpenCode",
+  "engines": {
+    "bun": ">=1.0.0"
   },
   "files": [
     "index.ts",
@@ -17,24 +34,7 @@
     "bin/imtoagent.cjs",
     "bin/imtoagent-real"
   ],
-  "scripts": {
-    "postinstall": "node scripts/postinstall.cjs",
-    "start": "bun run index.ts"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
-    "@larksuiteoapi/node-sdk": "^1.62.0",
-    "@wecom/aibot-node-sdk": "^1.0.7",
-    "qrcode": "^1.5.4"
-  },
-  "engines": {
-    "bun": ">=1.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/imtoagent/imtoagent.git",
-    "directory": ""
-  },
+  "homepage": "https://github.com/imtoagent/imtoagent#readme",
   "keywords": [
     "im",
     "gateway",
@@ -48,10 +48,10 @@
     "ai-agent",
     "bot-framework"
   ],
-  "author": "Keyi",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/imtoagent/imtoagent/issues"
+  "scripts": {
+    "postinstall": "node scripts/postinstall.cjs",
+    "start": "bun run index.ts"
   },
-  "homepage": "https://github.com/imtoagent/imtoagent#readme"
+  "type": "module"
 }
