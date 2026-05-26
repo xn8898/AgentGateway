@@ -94,6 +94,9 @@ import { HermesAdapter } from './modules/agent/hermes-adapter';
 import { RunnerAdapter } from './modules/runner/runner-adapter';
 import { getDb } from './modules/store/db';
 import * as agentStore from './modules/store/agent-store';
+import * as sessionStore from './modules/store/session-store';
+import * as conversationStore from './modules/store/conversation-store';
+import * as approvalStore from './modules/store/approval-store';
 
 // ===== 全局活跃请求计数 =====
 let activeRequests = 0;
@@ -308,6 +311,7 @@ class Bot {
   soul: string;
   client: Lark.Client;
   im: IMModule;
+  imType: string;
   config: any;
 
   // SDK
@@ -359,6 +363,7 @@ class Bot {
       throw new Error(`Unsupported IM type: ${imType} (registered: ${known})`);
     }
     this.im = imFactory.create(cfg);
+    this.imType = imType;
 
     // ===== SDK 集成 =====
     this.sessionManager = new CustomSessionManager(this.id, this.sessions);
@@ -860,6 +865,179 @@ function loadGatewayConfig(configPath: string): any | null {
 }
 
 // ================================================================
+// Gateway 消息处理
+// ================================================================
+
+async function handleGatewayMessage(
+  bot: Bot,
+  chatId: string,
+  text: string,
+  userId: string,
+  channelId: string,
+  router: Router,
+  notificationQueue: NotificationQueue,
+  adapters: Map<string, any>,
+  dbPath: string,
+  gatewayConfig: any,
+) {
+  // 1. 捎带通知检查
+  const pending = notificationQueue.flushPending(channelId, chatId);
+  if (pending.length > 0) {
+    for (const msg of pending) {
+      await bot.reply(chatId, msg);
+    }
+  }
+
+  // 2. 检查是否有等待中的确认请求
+  const activeSession = sessionStore.getActiveSession(dbPath, channelId, chatId);
+  if (activeSession?.status === 'waiting_approval') {
+    const approvalReq = approvalStore.getPendingBySession(dbPath, activeSession.id);
+    if (approvalReq) {
+      const answer = parseApprovalAnswer(text);
+      if (answer) {
+        approvalStore.respondToRequest(dbPath, approvalReq.id, answer, answer === 'n' ? 'denied' : 'approved');
+        const adapter = adapters.get(activeSession.agent_id);
+        if (adapter?.sendApprovalResponse) {
+          await adapter.sendApprovalResponse(activeSession.agent_session_id, answer);
+        }
+        sessionStore.updateSessionStatus(dbPath, activeSession.id, 'busy');
+        await bot.reply(chatId, `✅ 已发送确认：${answer}`);
+        return;
+      }
+    }
+  }
+
+  // 3. 路由解析
+  const route = router.parse(text);
+
+  // 系统指令
+  if (route.target === '__system__') {
+    await handleSystemCommand(bot, chatId, route.message, router, adapters);
+    return;
+  }
+
+  // 错误处理
+  if (route.target === '__not_found__' || route.target === '__ambiguous__') {
+    await bot.reply(chatId, route.message);
+    return;
+  }
+
+  // 4. 获取适配器
+  const adapter = adapters.get(route.target);
+  if (!adapter) {
+    await bot.reply(chatId, `❌ Agent @${route.target} 未配置适配器`);
+    return;
+  }
+
+  // 5. 获取或创建会话
+  const session = sessionStore.getOrCreateSession(dbPath, route.target, channelId, chatId);
+
+  // 6. 记录用户消息
+  conversationStore.saveMessage(dbPath, route.target, channelId, chatId, 'user', route.message);
+
+  // 7. 调用 Agent
+  sessionStore.updateSessionStatus(dbPath, session.id, 'busy', route.message.substring(0, 50));
+
+  try {
+    await bot.reply(chatId, '💭 处理中...');
+
+    const agentInput = {
+      chatId,
+      text: route.message,
+      session: {
+        chatId,
+        userId,
+        startFresh: false,
+        backendSessionId: session.agent_session_id,
+        metadata: {},
+        stats: { calls: 0, totalTurns: 0, totalInputTokens: 0, totalOutputTokens: 0, totalCostUSD: 0, totalDurationMs: 0 },
+        lastUsed: Date.now(),
+        running: false,
+        recentMessages: [],
+      },
+      workingDir: gatewayConfig.routing?.default_cwd || process.cwd(),
+      model: 'default',
+    };
+
+    const output = await adapter.handleMessage(agentInput);
+
+    // 记录 Agent 回复
+    if (output.text) {
+      conversationStore.saveMessage(dbPath, route.target, channelId, chatId, 'agent', output.text);
+      await bot.reply(chatId, output.text);
+    }
+
+    if (output.error) {
+      await bot.reply(chatId, `❌ ${output.error}`);
+    }
+
+    sessionStore.updateSessionStatus(dbPath, session.id, 'idle');
+  } catch (err: any) {
+    await bot.reply(chatId, `❌ Agent 错误：${err.message}`);
+    sessionStore.updateSessionStatus(dbPath, session.id, 'idle');
+  }
+}
+
+function parseApprovalAnswer(text: string): string | null {
+  const t = text.trim().toLowerCase();
+  if (['y', 'yes', '是', '同意', '批准'].includes(t)) return 'y';
+  if (['n', 'no', '否', '拒绝', 'deny'].includes(t)) return 'n';
+  if (['a', 'always', '总是'].includes(t)) return 'a';
+  if (['d', 'done', '完成'].includes(t)) return 'd';
+  return null;
+}
+
+async function handleSystemCommand(bot: Bot, chatId: string, command: string, router: Router, adapters: Map<string, any>) {
+  const parts = command.split(/\s+/);
+  const cmd = parts[0];
+
+  switch (cmd) {
+    case '/list': {
+      const agents = router.getAllAgents();
+      const list = agents.map(a => `  @${a.id} (${a.type} @ ${a.host})`).join('\n');
+      await bot.reply(chatId, `已注册的 Agent：\n${list}`);
+      break;
+    }
+    case '/status': {
+      const target = parts[1]?.replace('@', '');
+      if (target) {
+        const agent = router.getAgent(target);
+        if (!agent) { await bot.reply(chatId, `未找到 @${target}`); return; }
+        const adapter = adapters.get(target);
+        if (adapter?.healthCheck) {
+          const ok = await adapter.healthCheck();
+          await bot.reply(chatId, `@${target}: ${ok ? '🟢 在线' : '🔴 离线'}`);
+        } else {
+          await bot.reply(chatId, `@${target}: 状态未知`);
+        }
+      } else {
+        const agents = router.getAllAgents();
+        const lines = [];
+        for (const a of agents) {
+          const adapter = adapters.get(a.id);
+          const ok = adapter?.healthCheck ? await adapter.healthCheck() : false;
+          lines.push(`@${a.id}: ${ok ? '🟢' : '🔴'}`);
+        }
+        await bot.reply(chatId, lines.join('\n'));
+      }
+      break;
+    }
+    case '/help':
+      await bot.reply(chatId, [
+        '可用指令：',
+        '@别名 消息 — 发消息给指定 Agent',
+        '@机器:类型 消息 — 按机器+类型路由',
+        '/list — 列出所有 Agent',
+        '/status [@agent] — 查看状态',
+        '/help — 帮助',
+      ].join('\n'));
+      break;
+    default:
+      await bot.reply(chatId, `未知指令：${cmd}，输入 /help 查看帮助`);
+  }
+}
+
+// ================================================================
 // 主入口
 // ================================================================
 async function main() {
@@ -1001,28 +1179,19 @@ async function main() {
   console.log(`   Anthropic: http://localhost:${proxyPort}`);
   console.log(`   Bots:`);
 
-  for (const bot of bots) {
-    bot.im.start(async (chatId, text, userId, attachments) => {
-      const attDesc = attachments?.length
-        ? ` +${attachments.length} attachments(${attachments.map(a => a.type).join(',')})`
-        : '';
-      console.log(`[${bot.name}] Received chat=${chatId.slice(-8)} "${text.slice(0, 80)}"${attDesc}`);
-      setCurrentBot({ botName: bot.name, caps: bot.im.getCapabilities(), modelAliases: bot.modelAliases });
-      bot.handleMessage(chatId, text, userId, attachments).catch((e: Error) =>
-        console.error(`[${bot.name}] handleMessage unhandled:`, e.message)
-      );
-    });
-    console.log(`   - ${bot.name}: ${bot.backend} ✅ (appId=${bot.appId.slice(-8)}…) [SDK]`);
-  }
-  console.log('');
+  // ===== AI Gateway 初始化（在 bot 启动之前，确保变量在回调闭包中可用） =====
+  let gatewayRouter: Router | null = null;
+  let gatewayNotificationQueue: NotificationQueue | null = null;
+  let gatewayAdapters: Map<string, any> = new Map();
+  let gatewayDbPath: string = '';
+  let gatewayConfig: any = null;
 
-  // ===== AI Gateway 初始化 =====
   const GATEWAY_CONFIG_PATH = path.join(process.cwd(), 'config.yaml');
-  const gatewayConfig = loadGatewayConfig(GATEWAY_CONFIG_PATH);
+  gatewayConfig = loadGatewayConfig(GATEWAY_CONFIG_PATH);
 
   if (gatewayConfig?.agents && Object.keys(gatewayConfig.agents).length > 0) {
-    const dbPath = gatewayConfig.storage?.db_path || './data/gateway.db';
-    getDb(dbPath);
+    gatewayDbPath = gatewayConfig.storage?.db_path || './data/gateway.db';
+    getDb(gatewayDbPath);
 
     // 注册 Agent 实例
     const agentConfigs = Object.entries(gatewayConfig.agents).map(([id, cfg]: [string, any]) => ({
@@ -1030,28 +1199,27 @@ async function main() {
     }));
 
     for (const agent of agentConfigs) {
-      agentStore.upsertAgent(dbPath, agent);
+      agentStore.upsertAgent(gatewayDbPath, agent);
     }
 
     // 创建 Router
     const defaultAgent = gatewayConfig.routing?.default_agent || agentConfigs[0]?.id || '';
-    const router = new Router(agentConfigs, defaultAgent);
+    gatewayRouter = new Router(agentConfigs, defaultAgent);
 
     // 创建 NotificationQueue
-    const notificationQueue = new NotificationQueue(dbPath);
+    gatewayNotificationQueue = new NotificationQueue(gatewayDbPath);
 
     // 创建 Agent 适配器
-    const adapters = new Map<string, any>();
     for (const agent of agentConfigs) {
       if (agent.runner) {
-        adapters.set(agent.id, new RunnerAdapter({
+        gatewayAdapters.set(agent.id, new RunnerAdapter({
           name: agent.id,
           host: agent.host,
           agentType: agent.type,
           apiKey: agent.apiKey,
         }));
       } else if (agent.type === 'hermes') {
-        adapters.set(agent.id, new HermesAdapter({
+        gatewayAdapters.set(agent.id, new HermesAdapter({
           name: agent.id,
           host: agent.host,
           apiKey: agent.apiKey,
@@ -1060,9 +1228,39 @@ async function main() {
     }
 
     console.log(`[Gateway] Loaded ${agentConfigs.length} agents, default: ${defaultAgent}`);
-    // TODO: Wire router, notificationQueue, adapters into message handling
-    // This will be completed in Task 10 (AgentRuntime integration)
   }
+
+  // 启动 Bot 消息监听
+  for (const bot of bots) {
+    bot.im.start(async (chatId, text, userId, attachments) => {
+      const attDesc = attachments?.length
+        ? ` +${attachments.length} attachments(${attachments.map(a => a.type).join(',')})`
+        : '';
+      console.log(`[${bot.name}] Received chat=${chatId.slice(-8)} "${text.slice(0, 80)}"${attDesc}`);
+      setCurrentBot({ botName: bot.name, caps: bot.im.getCapabilities(), modelAliases: bot.modelAliases });
+
+      // Gateway 模式：通过 Gateway 路由消息
+      if (gatewayConfig?.agents && gatewayRouter && gatewayNotificationQueue) {
+        try {
+          await handleGatewayMessage(
+            bot, chatId, text, userId, bot.imType || 'wechat',
+            gatewayRouter, gatewayNotificationQueue, gatewayAdapters,
+            gatewayDbPath, gatewayConfig,
+          );
+        } catch (e: any) {
+          console.error(`[Gateway] handleMessage error: ${e.message}`);
+        }
+        return;
+      }
+
+      // 原始模式
+      bot.handleMessage(chatId, text, userId, attachments).catch((e: Error) =>
+        console.error(`[${bot.name}] handleMessage unhandled:`, e.message)
+      );
+    });
+    console.log(`   - ${bot.name}: ${bot.backend} ✅ (appId=${bot.appId.slice(-8)}…) [SDK]`);
+  }
+  console.log('');
 
   // 自动生成 workspace.md
   const updateWorkspace = (bot: Bot) => {
