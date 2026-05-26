@@ -85,6 +85,15 @@ import { CodexAdapter } from './modules/agent/codex-adapter';
 import { OpenCodeAdapter } from './modules/agent/opencode-adapter';
 import type { CallStats, Session, AgentAdapter, MessageAttachment } from './modules/core/types';
 import { startOpenCodeServer, stopOpenCodeServer } from './modules/agent/opencode-adapter';
+import yaml from 'js-yaml';
+
+// ===== AI Gateway =====
+import { Router } from './modules/core/Router';
+import { NotificationQueue } from './modules/core/NotificationQueue';
+import { HermesAdapter } from './modules/agent/hermes-adapter';
+import { RunnerAdapter } from './modules/runner/runner-adapter';
+import { getDb } from './modules/store/db';
+import * as agentStore from './modules/store/agent-store';
 
 // ===== 全局活跃请求计数 =====
 let activeRequests = 0;
@@ -840,6 +849,17 @@ async function gracefulReload(reason: string) {
 process.on('SIGHUP', () => gracefulReload('SIGHUP'));
 
 // ================================================================
+// AI Gateway 配置加载
+// ================================================================
+function loadGatewayConfig(configPath: string): any | null {
+  if (!fs.existsSync(configPath)) return null;
+  let content = fs.readFileSync(configPath, 'utf-8');
+  // 环境变量替换
+  content = content.replace(/\$\{(\w+)\}/g, (_, key) => process.env[key] || '');
+  return yaml.load(content) as any;
+}
+
+// ================================================================
 // 主入口
 // ================================================================
 async function main() {
@@ -995,6 +1015,54 @@ async function main() {
     console.log(`   - ${bot.name}: ${bot.backend} ✅ (appId=${bot.appId.slice(-8)}…) [SDK]`);
   }
   console.log('');
+
+  // ===== AI Gateway 初始化 =====
+  const GATEWAY_CONFIG_PATH = path.join(process.cwd(), 'config.yaml');
+  const gatewayConfig = loadGatewayConfig(GATEWAY_CONFIG_PATH);
+
+  if (gatewayConfig?.agents && Object.keys(gatewayConfig.agents).length > 0) {
+    const dbPath = gatewayConfig.storage?.db_path || './data/gateway.db';
+    getDb(dbPath);
+
+    // 注册 Agent 实例
+    const agentConfigs = Object.entries(gatewayConfig.agents).map(([id, cfg]: [string, any]) => ({
+      id, ...cfg,
+    }));
+
+    for (const agent of agentConfigs) {
+      agentStore.upsertAgent(dbPath, agent);
+    }
+
+    // 创建 Router
+    const defaultAgent = gatewayConfig.routing?.default_agent || agentConfigs[0]?.id || '';
+    const router = new Router(agentConfigs, defaultAgent);
+
+    // 创建 NotificationQueue
+    const notificationQueue = new NotificationQueue(dbPath);
+
+    // 创建 Agent 适配器
+    const adapters = new Map<string, any>();
+    for (const agent of agentConfigs) {
+      if (agent.runner) {
+        adapters.set(agent.id, new RunnerAdapter({
+          name: agent.id,
+          host: agent.host,
+          agentType: agent.type,
+          apiKey: agent.apiKey,
+        }));
+      } else if (agent.type === 'hermes') {
+        adapters.set(agent.id, new HermesAdapter({
+          name: agent.id,
+          host: agent.host,
+          apiKey: agent.apiKey,
+        }));
+      }
+    }
+
+    console.log(`[Gateway] Loaded ${agentConfigs.length} agents, default: ${defaultAgent}`);
+    // TODO: Wire router, notificationQueue, adapters into message handling
+    // This will be completed in Task 10 (AgentRuntime integration)
+  }
 
   // 自动生成 workspace.md
   const updateWorkspace = (bot: Bot) => {

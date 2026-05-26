@@ -1,0 +1,43 @@
+# AI Gateway 配置
+channels:
+  wechat:
+    enabled: false
+    type: ilink
+  telegram:
+    enabled: false
+    type: telegram
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    allowed_users: []
+  feishu:
+    enabled: false
+    type: feishu
+    app_id: ${FEISHU_APP_ID}
+    app_secret: ${FEISHU_APP_SECRET}
+
+agents:
+  # 示例配置（按实际环境修改）
+  # claw-home:
+  #   type: openclaw
+  #   host: 192.168.1.100:8080
+  # hermes-main:
+  #   type: hermes
+  #   host: 192.168.1.101:3000
+  # cc-home:
+  #   type: claude-code
+  #   host: 192.168.1.100:9090
+  #   runner: true
+
+routing:
+  default_agent: ""
+  session_timeout: 1800000
+  message_max_length: 2000
+
+notifications:
+  on_complete: true
+  on_error: true
+  on_milestone: true
+  piggyback: true
+
+storage:
+  db_path: ./data/gateway.db
+  retention_days: 30
