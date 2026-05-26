@@ -24,6 +24,7 @@ export interface ExecutorSession {
   status: "running" | "waiting_approval" | "done" | "error";
   output: string;
   callbacks: ExecutorCallbacks;
+  stdinWriter: WritableStreamDefaultWriter<Uint8Array> | null;
 }
 
 // ================================================================
@@ -62,10 +63,9 @@ export function startExecution(
     stderr: "pipe",
   });
 
-  // 写入输入并关闭 stdin
+  // 写入输入，保持 stdin 开启以便后续发送 approval 回答
   const writer = proc.stdin.getWriter();
   writer.write(new TextEncoder().encode(input));
-  writer.close();
 
   const session: ExecutorSession = {
     id: sessionId,
@@ -73,6 +73,7 @@ export function startExecution(
     status: "running",
     output: "",
     callbacks,
+    stdinWriter: writer,
   };
 
   activeSessions.set(sessionId, session);
@@ -87,11 +88,13 @@ export function startExecution(
   proc.exited.then((code) => {
     session.status = code === 0 ? "done" : "error";
     session.callbacks.onDone(code ?? 0);
+    closeStdin(session);
     activeSessions.delete(sessionId);
   }).catch((err) => {
     console.error(`[executor] process error for session ${sessionId}:`, err.message);
     session.status = "error";
     session.callbacks.onDone(-1);
+    closeStdin(session);
     activeSessions.delete(sessionId);
   });
 
@@ -106,10 +109,8 @@ export function sendApproval(sessionId: string, answer: string): boolean {
   if (!session || session.status !== "waiting_approval") return false;
 
   try {
-    const writer = session.proc.stdin?.getWriter();
-    if (writer) {
-      writer.write(new TextEncoder().encode(answer + "\n"));
-      writer.close();
+    if (session.stdinWriter) {
+      session.stdinWriter.write(new TextEncoder().encode(answer + "\n"));
     }
   } catch {
     return false;
@@ -130,6 +131,7 @@ export function cancelExecution(sessionId: string): boolean {
     session.proc.kill("SIGTERM");
   } catch {}
 
+  closeStdin(session);
   activeSessions.delete(sessionId);
   return true;
 }
@@ -139,6 +141,18 @@ export function cancelExecution(sessionId: string): boolean {
  */
 export function getSessionStatus(sessionId: string): ExecutorSession | undefined {
   return activeSessions.get(sessionId);
+}
+
+// ================================================================
+// 内部: 工具函数
+// ================================================================
+
+function closeStdin(session: ExecutorSession) {
+  try {
+    session.stdinWriter?.releaseLock();
+    session.proc.stdin?.cancel();
+  } catch {}
+  session.stdinWriter = null;
 }
 
 // ================================================================
