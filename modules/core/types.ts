@@ -256,3 +256,104 @@ export interface ProviderConfig {
   model: string;
   format: 'anthropic' | 'openai';
 }
+
+// ============ 路由相关 (AI Gateway) ============
+
+/** 路由解析结果 */
+export interface RouteResult {
+  target: string;          // Agent 实例 ID（如 "claw-home"）| "__ambiguous__" | "__not_found__" | "__system__" | "default"
+  message: string;         // 去掉路由前缀后的消息文本
+}
+
+/** Agent 实例配置 */
+export interface AgentInstanceConfig {
+  id: string;              // 实例别名（如 "claw-home"）
+  type: string;            // Agent 类型（"openclaw" | "hermes" | "claude-code" | "opencode"）
+  host: string;            // 地址（IP:端口 或 域名）
+  apiKey?: string;         // API Key
+  runner?: boolean;        // 是否需要 Runner
+  approval?: ApprovalConfig;
+}
+
+/** 审批配置 */
+export interface ApprovalConfig {
+  mode: "auto_approve" | "prompt" | "hybrid";
+  auto_approve_commands?: string[];
+  deny_commands?: string[];
+}
+
+// ============ 确认相关 (AI Gateway) ============
+
+/** Agent 确认请求 */
+export interface ApprovalRequest {
+  id?: number;
+  sessionId: string;
+  agentId: string;
+  channelId: string;
+  chatId: string;
+  prompt: string;
+  options: string[];
+  detail?: string;
+  status: "pending" | "approved" | "denied" | "timeout";
+  answer?: string;
+  createdAt: string;
+  respondedAt?: string;
+}
+
+/** 确认模式检测结果 */
+export interface ApprovalDetection {
+  prompt: string;
+  options: string[];
+  detail: string;
+}
+
+// ============ 通知相关 (AI Gateway) ============
+
+/** 待推送通知 */
+export interface PendingNotification {
+  id?: number;
+  channelId: string;
+  chatId: string;
+  message: string;
+  createdAt: string;
+  delivered: boolean;
+}
+
+// ============ Agent 响应 (AI Gateway) ============
+
+/** Agent 统一响应（用于 Runner/Hermes 等远程适配器） */
+export interface AgentResponse {
+  text: string;
+  sessionId: string;
+  status: "done" | "working" | "error" | "waiting_approval";
+  progress?: string;
+}
+
+/** Agent 状态 */
+export interface AgentStatus {
+  online: boolean;
+  busy: boolean;
+  currentTask?: string;
+  pendingOutput?: string;
+}
+
+// ============ Runner 相关 (AI Gateway) ============
+
+/** Runner 运行请求 */
+export interface RunnerRunRequest {
+  command: string;         // "claude-code" | "opencode"
+  sessionId?: string;
+  input: string;
+  approvalMode?: string;
+}
+
+/** Runner SSE 事件 */
+export interface RunnerSSEEvent {
+  type: "output" | "approval_required" | "done" | "error";
+  text?: string;
+  sessionId?: string;
+  prompt?: string;
+  options?: string[];
+  detail?: string;
+  code?: number;
+}
