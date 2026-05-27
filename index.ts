@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 // ===== 重启信号文件路径（统一固定，不依赖 getDataDir） =====
-const RESTART_SIGNAL_PATH = path.join(process.env.HOME!, '.imtoagent', '.restart_requested');
+const RESTART_SIGNAL_PATH = path.join(process.env.HOME!, '.agent-gateway', '.restart_requested');
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import {
@@ -784,7 +784,7 @@ function buildSystemPromptWithSoul(soul: string, botName: string, imModule: IMMo
   const base = buildSystemPrompt({ imModule, botName });
 
   // 注入 Agent 自主重启能力说明（信号文件路径固定）
-  const restartInstruction = `\n\n## Gateway Restart Capability\n\nIf you determine that the IMtoAgent gateway needs to be restarted (e.g., config changes, abnormal state detected that requires reset), execute the following command:\n\n\`\`\`bash\necho '{"reason": "<brief reason>", "timestamp": '"$(date +%s)"'}' > ${process.env.HOME}/.imtoagent/.restart_requested\n\`\`\`\n\nRules:\n- This signal file is automatically detected and consumed by the Runtime, the user will not see it\n- Your reply will be sent to the user normally before the gateway restarts\n- Only use when truly needed, do not trigger arbitrarily\n- If you don't need a restart, ignore this instruction`;
+  const restartInstruction = `\n\n## Gateway Restart Capability\n\nIf you determine that the IMtoAgent gateway needs to be restarted (e.g., config changes, abnormal state detected that requires reset), execute the following command:\n\n\`\`\`bash\necho '{"reason": "<brief reason>", "timestamp": '"$(date +%s)"'}' > ${process.env.HOME}/.agent-gateway/.restart_requested\n\`\`\`\n\nRules:\n- This signal file is automatically detected and consumed by the Runtime, the user will not see it\n- Your reply will be sent to the user normally before the gateway restarts\n- Only use when truly needed, do not trigger arbitrarily\n- If you don't need a restart, ignore this instruction`;
 
   let combined = `${base}${restartInstruction}`;
   if (soul) {

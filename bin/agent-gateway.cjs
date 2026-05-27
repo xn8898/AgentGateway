@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// imtoagent CLI wrapper — finds bun and delegates
+// agent-gateway CLI wrapper — finds bun and delegates
 "use strict";
 var path = require("path");
 var fs = require("fs");
@@ -31,7 +31,7 @@ if (!bunPath) {
 }
 
 var pkgDir = path.resolve(__dirname, "..");
-var real = path.join(pkgDir, "bin", "imtoagent-real");
+var real = path.join(pkgDir, "bin", "agent-gateway-real");
 var child = spawn(bunPath, [real].concat(process.argv.slice(2)), {
   stdio: "inherit",
   env: Object.assign({}, process.env),
@@ -42,6 +42,6 @@ child.on("exit", function (code) {
 });
 
 child.on("error", function (err) {
-  console.error("❌ Failed to start imtoagent:", err.message);
+  console.error("❌ Failed to start agent-gateway:", err.message);
   process.exit(1);
 });

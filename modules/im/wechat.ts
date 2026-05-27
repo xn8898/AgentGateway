@@ -50,7 +50,7 @@ const TEXT_MAX = 4000;
 const SESSION_PAUSE_MS = 60 * 60 * 1000; // 过期后暂停 1 小时
 
 // 凭证 & context_token 存储
-const DATA_DIR = path.join(os.homedir(), '.imtoagent');
+const DATA_DIR = path.join(os.homedir(), '.agent-gateway');
 const CREDS_FILE = path.join(DATA_DIR, 'wechat-creds.json');
 const CONTEXT_TOKENS_FILE = path.join(DATA_DIR, 'wechat-context-tokens.json');
 const MEDIA_DIR = path.join(DATA_DIR, 'wechat-media');

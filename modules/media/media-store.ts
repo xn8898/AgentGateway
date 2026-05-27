@@ -157,7 +157,7 @@ export class MediaStore {
     if (options?.rootDir) {
       this.rootDir = options.rootDir;
     } else {
-      // 默认: ~/.imtoagent/media/inbound/
+      // 默认: ~/.agent-gateway/media/inbound/
       this.rootDir = path.join(getDataDir(), 'media', 'inbound');
     }
 

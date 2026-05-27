@@ -2,7 +2,7 @@
 // 路径解析模块 — 首次部署自动初始化的核心地基
 // ================================================================
 // 职责：
-//   1. 统一解析数据目录（~/.imtoagent/ 或开发时的 cwd）
+//   1. 统一解析数据目录（~/.agent-gateway/ 或开发时的 cwd）
 //   2. 统一解析 npm 包安装目录（读取模板用）
 //   3. 兼容旧开发模式（bun run index.ts 在旧项目目录）
 //   4. 首次部署自动初始化数据目录 + 配置文件
@@ -20,33 +20,33 @@ let _pkgDir: string | null = null;
  * 返回 imtoagent 的用户数据目录（读写）。
  *
  * 优先级：
- *   1. IMTOAGENT_HOME 环境变量 → 如果有 config.json 则直接用
- *   2. ~/.imtoagent/ 存在且有 config.json → 用
- *   3. cwd 有 config.json → 开发模式（从 cwd 初始化 ~/.imtoagent）
- *   4. 从包目录模板初始化 ~/.imtoagent（npm 全局安装首次运行）
+ *   1. AGENT_GATEWAY_HOME 环境变量 → 如果有 config.json 则直接用
+ *   2. ~/.agent-gateway/ 存在且有 config.json → 用
+ *   3. cwd 有 config.json → 开发模式（从 cwd 初始化 ~/.agent-gateway）
+ *   4. 从包目录模板初始化 ~/.agent-gateway（npm 全局安装首次运行）
  *   5. 包目录 fallback（极端情况）
  *
- * 关键改进：IMTOAGENT_HOME 不再是"强制覆盖"——如果目录为空，
+ * 关键改进：AGENT_GATEWAY_HOME 不再是"强制覆盖"——如果目录为空，
  * 会继续尝试从其他来源找到配置文件，并自动初始化。
  */
 export function getDataDir(): string {
   if (_dataDir) return _dataDir;
 
   const home = process.env.HOME || process.env.USERPROFILE?.replace(/\\/g, '/') || '';
-  const dotDir = path.join(home, '.imtoagent');
-  const envHome = process.env.IMTOAGENT_HOME || '';
+  const dotDir = path.join(home, '.agent-gateway');
+  const envHome = process.env.AGENT_GATEWAY_HOME || '';
 
   // ====== 第 1 步：查找已有的配置文件 ======
   const candidates: { dir: string; label: string }[] = [];
 
-  // IMTOAGENT_HOME（优先检查，但不强制；目录不存在则忽略）
+  // AGENT_GATEWAY_HOME（优先检查，但不强制；目录不存在则忽略）
   if (envHome && fs.existsSync(envHome) && fs.existsSync(path.join(envHome, 'config.json'))) {
-    candidates.push({ dir: envHome, label: 'IMTOAGENT_HOME' });
+    candidates.push({ dir: envHome, label: 'AGENT_GATEWAY_HOME' });
   }
 
-  // ~/.imtoagent/
+  // ~/.agent-gateway/
   if (fs.existsSync(path.join(dotDir, 'config.json'))) {
-    candidates.push({ dir: dotDir, label: '~/.imtoagent' });
+    candidates.push({ dir: dotDir, label: '~/.agent-gateway' });
   }
 
   // cwd（开发模式）
@@ -69,15 +69,15 @@ export function getDataDir(): string {
 }
 
 /**
- * 首次部署：自动创建 ~/.imtoagent/ 并初始化配置文件。
+ * 首次部署：自动创建 ~/.agent-gateway/ 并初始化配置文件。
  *
  * 配置文件来源（按优先级）：
- *   1. IMTOAGENT_HOME 下的 config.json（目录存在但没文件）
+ *   1. AGENT_GATEWAY_HOME 下的 config.json（目录存在但没文件）
  *   2. cwd 下的 config.json / providers.json（手动部署/git clone）
  *   3. 包安装目录的 templates/（npm 全局安装）
  */
 function initDataDir(dotDir: string, envHome: string): string {
-  const target = dotDir; // 统一使用 ~/.imtoagent/
+  const target = dotDir; // 统一使用 ~/.agent-gateway/
 
   // 确定配置文件来源
   let sourceDir: string | null = null;
@@ -85,7 +85,7 @@ function initDataDir(dotDir: string, envHome: string): string {
 
   if (envHome && fs.existsSync(envHome) && fs.existsSync(path.join(envHome, 'config.json'))) {
     sourceDir = envHome;
-    sourceLabel = 'IMTOAGENT_HOME';
+    sourceLabel = 'AGENT_GATEWAY_HOME';
   } else if (fs.existsSync(path.join(process.cwd(), 'config.json'))) {
     sourceDir = process.cwd();
     sourceLabel = 'cwd';

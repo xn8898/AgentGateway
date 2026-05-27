@@ -1,10 +1,10 @@
 {
-  "name": "imtoagent",
-  "version": "0.3.21",
+  "name": "agent-gateway",
+  "version": "0.1.0",
   "author": "Keyi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/imtoagent/imtoagent.git",
+    "url": "",
     "directory": ""
   },
   "dependencies": {
@@ -16,12 +16,12 @@
     "qrcode": "^1.5.4"
   },
   "bin": {
-    "imtoagent": "./bin/imtoagent.cjs"
+    "agent-gateway": "./bin/agent-gateway.cjs"
   },
   "bugs": {
-    "url": "https://github.com/imtoagent/imtoagent/issues"
+    "url": ""
   },
-  "description": "IM ↔ Agent 统一网关 — 飞书/Telegram/微信/企业微信对接 Claude Code/Codex/OpenCode",
+  "description": "AI Agent 统一网关 — 通过微信/Telegram/飞书远程指挥多台机器上的多个 AI 编码 Agent",
   "engines": {
     "bun": ">=1.0.0"
   },
@@ -32,23 +32,23 @@
     "templates/",
     "scripts/",
     "README.md",
-    "bin/imtoagent.ts",
-    "bin/imtoagent.cjs",
-    "bin/imtoagent-real"
+    "bin/agent-gateway.ts",
+    "bin/agent-gateway.cjs",
+    "bin/agent-gateway-real"
   ],
-  "homepage": "https://github.com/imtoagent/imtoagent#readme",
+  "homepage": "",
   "keywords": [
-    "im",
-    "gateway",
+    "ai-gateway",
+    "agent-gateway",
     "claude-code",
-    "codex",
+    "hermes",
     "opencode",
     "feishu",
     "telegram",
     "wechat",
-    "wecom",
+    "ilink",
     "ai-agent",
-    "bot-framework"
+    "multi-agent"
   ],
   "license": "MIT",
   "scripts": {

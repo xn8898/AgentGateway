@@ -29,7 +29,8 @@
       "Bash(bun -e \"import\\('./index.ts'\\).catch\\(e => { console.error\\(e.message\\); process.exit\\(1\\) }\\)\")",
       "Bash(echo \"Exit code: $?\")",
       "Bash(bun *)",
-      "Bash(git -C E:/work/2026/ai/ai-gateway status --short)"
+      "Bash(git -C E:/work/2026/ai/ai-gateway status --short)",
+      "Bash(node *)"
     ]
   }
 }

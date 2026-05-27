@@ -93,13 +93,13 @@ export function buildSystemPrompt(ctx: PromptBuilderContext): string {
   // 3. Gateway logs (Agent can proactively query)
   sections.push(`# Gateway Runtime Logs
 
-Gateway runtime logs: ~/.imtoagent/logs/imtoagent.log
+Gateway runtime logs: ~/.agent-gateway/logs/imtoagent.log
 
 You can check logs to understand gateway status, troubleshoot issues, and detect restart events:
-- \`tail -n 30 ~/.imtoagent/logs/imtoagent.log\` — Last 30 lines
-- \`grep -i "restart\|reload\|shutdown\|SIGTERM" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Restart/shutdown records
-- \`grep -i "error\|fail\|crash" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Error records
-- \`grep -i "online\|connected\|disconnected" ~/.imtoagent/logs/imtoagent.log | tail -n 10\` — Bot connection status
+- \`tail -n 30 ~/.agent-gateway/logs/imtoagent.log\` — Last 30 lines
+- \`grep -i "restart\|reload\|shutdown\|SIGTERM" ~/.agent-gateway/logs/imtoagent.log | tail -n 10\` — Restart/shutdown records
+- \`grep -i "error\|fail\|crash" ~/.agent-gateway/logs/imtoagent.log | tail -n 10\` — Error records
+- \`grep -i "online\|connected\|disconnected" ~/.agent-gateway/logs/imtoagent.log | tail -n 10\` — Bot connection status
 
 Note: Your first message after startup may have lost conversation memory (if the gateway restarted). Check logs first to understand the context.`);
 

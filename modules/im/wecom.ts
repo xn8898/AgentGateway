@@ -50,7 +50,7 @@ interface StoredCreds {
   boundAt: string;
 }
 
-const CREDS_FILE = path.join(os.homedir(), '.imtoagent', 'wecom-creds.json');
+const CREDS_FILE = path.join(os.homedir(), '.agent-gateway', 'wecom-creds.json');
 
 function loadCreds(): StoredCreds | null {
   try {
@@ -168,7 +168,7 @@ export interface WeComConfig {
  *
  * 架构说明:
  * - 首次启动无凭证时，显示二维码引导用户扫码
- * - 扫码后自动获取 botId + secret 并保存到 ~/.imtoagent/wecom-creds.json
+ * - 扫码后自动获取 botId + secret 并保存到 ~/.agent-gateway/wecom-creds.json
  * - 使用 @wecom/aibot-node-sdk 建立 WebSocket 长连接
  * - 无需公网 IP、无需 HTTP 回调
  *
@@ -589,7 +589,7 @@ export class WeComIMModule implements IMModule {
       if (!buffer || buffer.length === 0) return null;
 
       const finalName = filename || fallbackName;
-      const tempDir = path.join(os.homedir(), '.imtoagent', 'wecom-media');
+      const tempDir = path.join(os.homedir(), '.agent-gateway', 'wecom-media');
       fs.mkdirSync(tempDir, { recursive: true });
       const filePath = path.join(tempDir, `${Date.now()}_${finalName}`);
       fs.writeFileSync(filePath, buffer);
