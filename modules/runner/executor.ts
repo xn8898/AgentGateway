@@ -15,7 +15,7 @@ import { detectApprovalPrompt } from './approval-detector';
 export interface ExecutorCallbacks {
   onOutput: (chunk: string) => void;
   onApproval: (detection: { prompt: string; options: string[]; detail: string }) => void;
-  onDone: (code: number) => void;
+  onDone: (code: number, threadId?: string) => void;
 }
 
 export interface ExecutorSession {
@@ -25,6 +25,7 @@ export interface ExecutorSession {
   output: string;
   callbacks: ExecutorCallbacks;
   stdinWriter: WritableStreamDefaultWriter<Uint8Array> | null;
+  threadId?: string;  // Codex thread ID（从 JSON 输出解析）
 }
 
 // ================================================================
@@ -33,7 +34,8 @@ export interface ExecutorSession {
 
 const CLI_MAP: Record<string, { cmd: string; baseArgs: string[] }> = {
   "claude-code": { cmd: "claude", baseArgs: ["--print"] },
-  "opencode": { cmd: "opencode", baseArgs: [] }
+  "opencode": { cmd: "opencode", baseArgs: [] },
+  "codex": { cmd: "codex", baseArgs: ["exec", "--json", "--skip-git-repo-check"] },
 };
 
 // ================================================================
@@ -49,13 +51,22 @@ export function startExecution(
   sessionId: string,
   command: string,
   input: string,
-  callbacks: ExecutorCallbacks
+  callbacks: ExecutorCallbacks,
+  options?: { threadId?: string }
 ): ExecutorSession {
   const cli = CLI_MAP[command];
   if (!cli) throw new Error(`Unknown command: ${command}`);
 
-  const args = [...cli.baseArgs];
-  if (sessionId) args.push("--session", sessionId);
+  let args: string[];
+
+  // Codex 多轮：有 threadId 时用 resume
+  if (command === "codex" && options?.threadId) {
+    args = ["exec", "resume", options.threadId, "--json", "--skip-git-repo-check",
+            "--dangerously-bypass-approvals-and-sandbox"];
+  } else {
+    args = [...cli.baseArgs];
+    if (sessionId && command !== "codex") args.push("--session", sessionId);
+  }
 
   const proc = Bun.spawn([cli.cmd, ...args], {
     stdin: "pipe",
@@ -87,13 +98,13 @@ export function startExecution(
   // 等待进程退出
   proc.exited.then((code) => {
     session.status = code === 0 ? "done" : "error";
-    session.callbacks.onDone(code ?? 0);
+    session.callbacks.onDone(code ?? 0, session.threadId);
     closeStdin(session);
     activeSessions.delete(sessionId);
   }).catch((err) => {
     console.error(`[executor] process error for session ${sessionId}:`, err.message);
     session.status = "error";
-    session.callbacks.onDone(-1);
+    session.callbacks.onDone(-1, session.threadId);
     closeStdin(session);
     activeSessions.delete(sessionId);
   });
@@ -156,6 +167,29 @@ function closeStdin(session: ExecutorSession) {
 }
 
 // ================================================================
+// 内部: Codex threadId 解析
+// ================================================================
+
+/**
+ * 从 Codex JSON 输出行中解析 threadId
+ * Codex 输出格式: {"type":"thread.started","thread_id":"..."}
+ */
+function parseCodexThreadId(session: ExecutorSession, text: string): void {
+  if (session.threadId) return; // 已有 threadId，不再解析
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('{')) continue;
+    try {
+      const evt = JSON.parse(trimmed);
+      if (evt.type === 'thread.started' && evt.thread_id) {
+        session.threadId = evt.thread_id;
+        return;
+      }
+    } catch {}
+  }
+}
+
+// ================================================================
 // 内部: 流读取
 // ================================================================
 
@@ -182,6 +216,9 @@ async function readStdout(session: ExecutorSession, proc: Subprocess): Promise<v
         buffer = "";
         continue;
       }
+
+      // 解析 Codex JSON 输出中的 threadId
+      parseCodexThreadId(session, text);
 
       session.callbacks.onOutput(text);
     }

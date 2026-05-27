@@ -70,7 +70,7 @@ app.post("/run", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const { command, sessionId, input, approvalMode } = body;
+  const { command, sessionId, input, approvalMode, threadId } = body;
 
   if (!command || !input) {
     return c.json({ error: "Missing required fields: command, input" }, 400);
@@ -100,14 +100,14 @@ app.post("/run", async (c) => {
             detail: detection.detail,
           });
         },
-        onDone(code) {
-          send({ type: "done", code });
+        onDone(code, doneThreadId) {
+          send({ type: "done", code, threadId: doneThreadId });
           controller.close();
         },
       };
 
       try {
-        startExecution(sid, command, input, callbacks);
+        startExecution(sid, command, input, callbacks, { threadId });
       } catch (err: any) {
         send({ type: "error", text: err.message || "Failed to start execution" });
         controller.close();

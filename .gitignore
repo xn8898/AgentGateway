@@ -44,3 +44,6 @@ data/
 
 # Source scripts (keep compiled .cjs)
 scripts/postinstall.ts
+
+# Internal dev docs (superpowers workflow)
+docs/superpowers/

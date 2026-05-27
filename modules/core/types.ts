@@ -341,10 +341,11 @@ export interface AgentStatus {
 
 /** Runner 运行请求 */
 export interface RunnerRunRequest {
-  command: string;         // "claude-code" | "opencode"
+  command: string;         // "claude-code" | "opencode" | "codex"
   sessionId?: string;
   input: string;
   approvalMode?: string;
+  threadId?: string;       // Codex 多轮会话 thread ID
 }
 
 /** Runner SSE 事件 */
@@ -356,4 +357,5 @@ export interface RunnerSSEEvent {
   options?: string[];
   detail?: string;
   code?: number;
+  threadId?: string;       // Codex thread ID（done 事件中返回）
 }

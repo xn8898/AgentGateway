@@ -56,7 +56,7 @@ function processCodexStream(stdout: string): { threadId: string; response: strin
 }
 
 async function spawnCodexExec(cwd: string, prompt: string): Promise<{ threadId: string; response: string }> {
-  const child = Bun.spawn(['codex', 'exec', '-p', 'imtoagent', '-s', 'danger-full-access',
+  const child = Bun.spawn(['codex', 'exec', '-p', 'agent-gateway', '-s', 'danger-full-access',
     '--skip-git-repo-check', '--json', prompt], {
     cwd, stdout: 'pipe', stderr: 'pipe',
   });
@@ -80,7 +80,7 @@ async function spawnCodexExec(cwd: string, prompt: string): Promise<{ threadId: 
 
 async function spawnCodexResume(cwd: string, threadId: string, prompt: string): Promise<{ response: string }> {
   const child = Bun.spawn(['codex', 'exec', 'resume', threadId,
-    '--dangerously-bypass-approvals-and-sandbox', '-c', 'model_provider=imtoagent', '-c', 'model=gpt-5.5', '--json', '--skip-git-repo-check', prompt], {
+    '--dangerously-bypass-approvals-and-sandbox', '-c', 'model_provider=agent-gateway', '-c', 'model=gpt-5.5', '--json', '--skip-git-repo-check', prompt], {
     cwd, stdout: 'pipe', stderr: 'pipe',
   });
 

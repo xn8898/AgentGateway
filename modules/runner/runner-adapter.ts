@@ -66,6 +66,7 @@ export class RunnerAdapter implements AgentAdapter {
           command: this.agentType,
           sessionId: input.session.backendSessionId || undefined,
           input: input.text,
+          threadId: (input.session.metadata as any)?.codexThreadId || undefined,
         }),
         signal: input.cancelSignal,
       });
@@ -128,6 +129,10 @@ export class RunnerAdapter implements AgentAdapter {
                 break;
 
               case 'done':
+                // Codex: 保存 threadId 用于多轮会话
+                if (event.threadId) {
+                  (input.session.metadata as any).codexThreadId = event.threadId;
+                }
                 break;
 
               case 'error':
