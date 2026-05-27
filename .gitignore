@@ -47,3 +47,6 @@ scripts/postinstall.ts
 
 # Internal dev docs (superpowers workflow)
 docs/superpowers/
+
+# Private requirements
+需求.md
