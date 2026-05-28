@@ -16,6 +16,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import type {
   AgentAdapter,
   AgentInput,
@@ -32,7 +33,7 @@ import { DEFAULT_TERMINAL_CAPS } from '../prompt-builder';
 // ================================================================
 // Agent 自主重启 — 文件信号（固定路径，不依赖 dataDir 参数）
 // ================================================================
-const RESTART_SIGNAL_PATH = path.join(process.env.HOME!, '.agent-gateway', '.restart_requested');
+const RESTART_SIGNAL_PATH = path.join(os.homedir(), '.agent-gateway', '.restart_requested');
 const RESTART_COOLDOWN_MS = 5 * 60 * 1000; // 5 分钟
 let lastRestartTime = 0;
 

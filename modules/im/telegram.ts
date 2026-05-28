@@ -404,19 +404,21 @@ export class TelegramAdapter implements IMModule {
 
   async reply(chatId: string, text: string, maxLen = 4096): Promise<void> {
     const safe = text.length > maxLen ? text.slice(0, maxLen) + '\n\n…(truncated)' : text;
-    await this._api('sendMessage', {
-      chat_id: chatId,
-      text: safe,
-      parse_mode: 'MarkdownV2',
-      link_preview_options: { is_disabled: true },
-    }).catch(() =>
-      // MarkdownV2 解析失败时降级为纯文本
-      this._api('sendMessage', {
+    try {
+      await this._api('sendMessage', {
+        chat_id: chatId,
+        text: safe,
+        parse_mode: 'MarkdownV2',
+        link_preview_options: { is_disabled: true },
+      });
+    } catch (e: any) {
+      console.error('[Telegram] MarkdownV2 failed, falling back to plain text:', e.message);
+      await this._api('sendMessage', {
         chat_id: chatId,
         text: safe,
         link_preview_options: { is_disabled: true },
-      })
-    );
+      });
+    }
   }
 
   async sendProgress(chatId: string, text: string): Promise<void> {
@@ -629,7 +631,12 @@ export class TelegramAdapter implements IMModule {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     });
-    return res.json();
+    const data = await res.json();
+    if (!data.ok) {
+      console.error(`[Telegram] API ${method} failed:`, data.description || data);
+      throw new Error(data.description || `API ${method} failed`);
+    }
+    return data;
   }
 
   /** MarkdownV2 转义（Telegram 要求转义特殊字符） */

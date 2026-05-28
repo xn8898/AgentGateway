@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 // ===== 重启信号文件路径（统一固定，不依赖 getDataDir） =====
-const RESTART_SIGNAL_PATH = path.join(process.env.HOME!, '.agent-gateway', '.restart_requested');
+const RESTART_SIGNAL_PATH = path.join(os.homedir(), '.agent-gateway', '.restart_requested');
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import {
@@ -1147,9 +1147,32 @@ async function main() {
     process.exit(1);
   }
 
-  const botCfgs: any[] = config.bots || [];
+  // 提前加载 gatewayConfig（channels 映射 + gateway 初始化都需要）
+  const GATEWAY_CONFIG_PATH = path.join(process.cwd(), 'config.yaml');
+  const gatewayConfig: any = loadGatewayConfig(GATEWAY_CONFIG_PATH);
+
+  let botCfgs: any[] = config.bots || [];
+
+  // config.bots 为空时，从 config.yaml 的 channels 自动创建 bot 配置
+  if (botCfgs.length === 0 && gatewayConfig?.channels) {
+    for (const [chId, ch] of Object.entries(gatewayConfig.channels) as [string, any][]) {
+      if (!ch.enabled) continue;
+      const chType = ch.type || chId;
+      if (chType === 'feishu') {
+        botCfgs.push({ id: chId, name: chId, im: 'feishu', appId: ch.app_id, appSecret: ch.app_secret, backend: 'claude' });
+      } else if (chType === 'telegram') {
+        botCfgs.push({ id: chId, name: chId, im: 'telegram', appId: ch.bot_token, appSecret: '', backend: 'claude', proxy: ch.proxy });
+      } else if (chType === 'wechat' || chType === 'ilink') {
+        botCfgs.push({ id: chId, name: chId, im: 'wechat', appId: 'wechat-bot', appSecret: '', backend: 'claude' });
+      }
+    }
+    if (botCfgs.length > 0) {
+      console.log(`[Config] Auto-created ${botCfgs.length} bot(s) from config.yaml channels`);
+    }
+  }
+
   if (botCfgs.length === 0) {
-    console.log('💡 No bots configured in config.json, starting proxy only');
+    console.log('💡 No bots configured in config.json or config.yaml channels, starting proxy only');
     return;
   }
 
@@ -1189,10 +1212,6 @@ async function main() {
   let gatewayNotificationQueue: NotificationQueue | null = null;
   let gatewayAdapters: Map<string, any> = new Map();
   let gatewayDbPath: string = '';
-  let gatewayConfig: any = null;
-
-  const GATEWAY_CONFIG_PATH = path.join(process.cwd(), 'config.yaml');
-  gatewayConfig = loadGatewayConfig(GATEWAY_CONFIG_PATH);
 
   if (gatewayConfig?.agents && Object.keys(gatewayConfig.agents).length > 0) {
     const configuredDbPath = gatewayConfig.storage?.db_path || './data/gateway.db';
